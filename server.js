@@ -112,6 +112,106 @@ app.get('/api/goons', async (req, res) => {
   }
 });
 
+// ========== ETKİNLİK (EVENTS) ==========
+// Fandom wiki API'sinden son etkinliği çeker
+
+const MONTHS_TR = {
+  'January': 'Ocak', 'February': 'Şubat', 'March': 'Mart',
+  'April': 'Nisan', 'May': 'Mayıs', 'June': 'Haziran',
+  'July': 'Temmuz', 'August': 'Ağustos', 'September': 'Eylül',
+  'October': 'Ekim', 'November': 'Kasım', 'December': 'Aralık'
+};
+
+async function getLatestEvent() {
+  // Fandom API: sections listesi (etkinlik adlarını al)
+  const sectionsUrl = 'https://escapefromtarkov.fandom.com/api.php?action=parse&page=Events&prop=sections&format=json';
+  const sectionsRes = await fetch(sectionsUrl, {
+    headers: { 'User-Agent': 'TarkovBot/1.0' }
+  });
+  const sectionsData = await sectionsRes.json();
+  const firstSection = sectionsData.parse?.sections?.[0];
+  if (!firstSection) throw new Error('Etkinlik bulunamadı');
+
+  const eventName = firstSection.line; // Örn: "Casus belli (9 April 2026)"
+
+  // İlk bölümün wikitext'ini al
+  const wikiUrl = `https://escapefromtarkov.fandom.com/api.php?action=parse&page=Events&prop=wikitext&section=${firstSection.index}&format=json`;
+  const wikiRes = await fetch(wikiUrl, {
+    headers: { 'User-Agent': 'TarkovBot/1.0' }
+  });
+  const wikiData = await wikiRes.json();
+  const wikitext = wikiData.parse?.wikitext?.['*'] || '';
+
+  // Bullet point'leri çıkar (madde işaretleri)
+  const bullets = wikitext
+    .split('\n')
+    .filter(line => line.startsWith('*'))
+    .map(line => line
+      .replace(/^\*\s*/, '')
+      .replace(/\[\[([^\]|]*\|)?([^\]]*)\]\]/g, '$2') // [[link|text]] → text
+      .replace(/<[^>]+>/g, '') // HTML taglarını kaldır
+      .trim()
+    )
+    .filter(line => line.length > 0);
+
+  // Tarihi Türkçe'ye çevir
+  let eventNameTR = eventName;
+  for (const [en, tr] of Object.entries(MONTHS_TR)) {
+    eventNameTR = eventNameTR.replace(en, tr);
+  }
+
+  // Açıklamaları Türkçeye çevir
+  const bulletsTR = bullets.map(b => translateToTR(b));
+
+  return { eventNameTR, bullets: bulletsTR };
+}
+
+function translateToTR(text) {
+  const replacements = [
+    [/\bhas been added\b/gi, 'eklendi'],
+    [/\bhas been removed\b/gi, 'kaldırıldı'],
+    [/\bhas been changed\b/gi, 'değiştirildi'],
+    [/\bhas been updated\b/gi, 'güncellendi'],
+    [/\bhas been increased\b/gi, 'artırıldı'],
+    [/\bhas been decreased\b/gi, 'azaltıldı'],
+    [/\bhas been fixed\b/gi, 'düzeltildi'],
+    [/\bhave their value increased\b/gi, 'değerleri artırıldı'],
+    [/\bNew enemy type\b/gi, 'Yeni düşman tipi'],
+    [/\bspawn(s)? in groups of\b/gi, 'gruplar halinde doğar:'],
+    [/\bcan now also spawn with\b/gi, 'artık şunlarla da doğabilir:'],
+    [/\bin their pockets\b/gi, 'ceplerinde'],
+    [/\bQuest\b/g, 'Görev'],
+    [/\bBosses\b/gi, 'Patronlar'],
+    [/\bScavs\b/gi, 'Scav\'lar'],
+    [/\bon maps\b/gi, 'haritalarda'],
+    [/\band\b/gi, 've'],
+  ];
+  
+  let result = text;
+  for (const [pattern, replacement] of replacements) {
+    result = result.replace(pattern, replacement);
+  }
+  return result;
+}
+
+app.get('/api/event', async (req, res) => {
+  try {
+    const { eventNameTR, bullets } = await getLatestEvent();
+
+    const format = req.query.format;
+    if (format === 'json') {
+      return res.json({ event: eventNameTR, changes: bullets });
+    }
+
+    // Botrix için kısa düz metin (ilk 3 madde)
+    const shortBullets = bullets.slice(0, 3).join(' | ');
+    res.type('text/plain').send(`📢 ${eventNameTR} → ${shortBullets}`);
+  } catch (err) {
+    console.error('Event hatası:', err.message);
+    res.type('text/plain').send('Etkinlik verisi alınamadı.');
+  }
+});
+
 // Health check
 app.get('/api/healthz', (req, res) => {
   res.json({ status: 'ok' });
