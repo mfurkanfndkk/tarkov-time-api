@@ -167,29 +167,90 @@ async function getLatestEvent() {
 }
 
 function translateToTR(text) {
-  const replacements = [
+  // Tam cümle kalıpları (önce bunlar uygulanır)
+  const sentencePatterns = [
+    [/They can be found in groups of (\d+)-(\d+) on (.+)\./gi, (_, a, b, maps) => `${a}-${b} kişilik gruplar halinde ${translateMaps(maps)} haritalarında bulunabilirler.`],
+    [/They spawn in groups of (\d+)-(\d+) on (.+)\./gi, (_, a, b, maps) => `${a}-${b} kişilik gruplar halinde ${translateMaps(maps)} haritalarında doğarlar.`],
+    [/can now also spawn with (.+?) in their pockets/gi, (_, item) => `artık ceplerinde ${item} ile de doğabilir`],
+    [/(.+?) have their value increased/gi, (_, item) => `${item} değerleri artırıldı`],
+    [/(.+?) can now be found on (.+)/gi, (_, item, maps) => `${item} artık ${translateMaps(maps)} haritalarında bulunabilir`],
+    [/(.+?) can now be found in (.+)/gi, (_, item, loc) => `${item} artık ${loc} içinde bulunabilir`],
+    [/Spawn rate.+?increased to (\d+)%/gi, (_, pct) => `Doğma oranı %${pct}'e yükseltildi`],
+    [/Spawn rate.+?decreased to (\d+)%/gi, (_, pct) => `Doğma oranı %${pct}'e düşürüldü`],
+  ];
+
+  let result = text;
+  for (const [pattern, replacement] of sentencePatterns) {
+    result = result.replace(pattern, replacement);
+  }
+
+  // Kelime/ifade bazlı çeviriler
+  const wordPatterns = [
+    [/\bNew enemy type\b/gi, 'Yeni düşman tipi'],
     [/\bhas been added\b/gi, 'eklendi'],
     [/\bhas been removed\b/gi, 'kaldırıldı'],
     [/\bhas been changed\b/gi, 'değiştirildi'],
     [/\bhas been updated\b/gi, 'güncellendi'],
+    [/\bhas been enabled\b/gi, 'aktif edildi'],
+    [/\bhas been disabled\b/gi, 'devre dışı bırakıldı'],
     [/\bhas been increased\b/gi, 'artırıldı'],
     [/\bhas been decreased\b/gi, 'azaltıldı'],
+    [/\bhas been reduced\b/gi, 'azaltıldı'],
     [/\bhas been fixed\b/gi, 'düzeltildi'],
-    [/\bhave their value increased\b/gi, 'değerleri artırıldı'],
-    [/\bNew enemy type\b/gi, 'Yeni düşman tipi'],
-    [/\bspawn(s)? in groups of\b/gi, 'gruplar halinde doğar:'],
-    [/\bcan now also spawn with\b/gi, 'artık şunlarla da doğabilir:'],
-    [/\bin their pockets\b/gi, 'ceplerinde'],
+    [/\bhas been introduced\b/gi, 'tanıtıldı'],
+    [/\bhave been added\b/gi, 'eklendi'],
+    [/\bhave been removed\b/gi, 'kaldırıldı'],
+    [/\bhave been changed\b/gi, 'değiştirildi'],
+    [/\bhave been updated\b/gi, 'güncellendi'],
+    [/\bhave been increased\b/gi, 'artırıldı'],
+    [/\bhave been decreased\b/gi, 'azaltıldı'],
+    [/\bare now available\b/gi, 'artık mevcut'],
+    [/\bis now available\b/gi, 'artık mevcut'],
+    [/\bnow spawns?\b/gi, 'artık doğuyor'],
+    [/\bno longer spawns?\b/gi, 'artık doğmuyor'],
     [/\bQuest\b/g, 'Görev'],
+    [/\bquest\b/g, 'görev'],
+    [/\bTrader\b/g, 'Tüccar'],
+    [/\btrader\b/g, 'tüccar'],
     [/\bBosses\b/gi, 'Patronlar'],
-    [/\bScavs\b/gi, 'Scav\'lar'],
+    [/\bScavs\b/gi, "Scav'lar"],
+    [/\bspawn rate\b/gi, 'doğma oranı'],
+    [/\bflea market\b/gi, 'bit pazarı'],
+    [/\bfound in raid\b/gi, 'baskında bulunmuş'],
+    [/\bhideout\b/gi, 'sığınak'],
+    [/\bon all maps\b/gi, 'tüm haritalarda'],
     [/\bon maps\b/gi, 'haritalarda'],
-    [/\band\b/gi, 've'],
+    [/\bincreased\b/gi, 'artırıldı'],
+    [/\bdecreased\b/gi, 'azaltıldı'],
+    [/\benabled\b/gi, 'aktif edildi'],
+    [/\bdisabled\b/gi, 'devre dışı'],
+    [/\band\b/g, 've'],
   ];
-  
-  let result = text;
-  for (const [pattern, replacement] of replacements) {
+
+  for (const [pattern, replacement] of wordPatterns) {
     result = result.replace(pattern, replacement);
+  }
+  return result;
+}
+
+function translateMaps(mapStr) {
+  const mapNames = {
+    'Customs': 'Gümrük',
+    'Woods': 'Orman',
+    'Shoreline': 'Kıyı Şeridi',
+    'Lighthouse': 'Deniz Feneri',
+    'Interchange': 'Interchange',
+    'Factory': 'Fabrika',
+    'Reserve': 'Rezerv',
+    'Streets of Tarkov': 'Tarkov Sokakları',
+    'Streets': 'Sokaklar',
+    'Ground Zero': 'Sıfır Noktası',
+    'Lab': 'Laboratuvar',
+    'The Lab': 'Laboratuvar',
+  };
+  let result = mapStr;
+  for (const [en, tr] of Object.entries(mapNames)) {
+    result = result.replace(new RegExp(en, 'gi'), tr);
   }
   return result;
 }
