@@ -46,6 +46,72 @@ app.get('/api/tarkov-time', (req, res) => {
   res.type('text/plain').send(`🌅 ${left} | 🌙 ${right}`);
 });
 
+// ========== GOON TRACKER ==========
+// tarkov-goon-tracker.com'dan goon lokasyonunu çeker
+
+const MAP_NAMES_TR = {
+  'customs': 'Gümrük',
+  'woods': 'Orman',
+  'shoreline': 'Kıyı Şeridi',
+  'lighthouse': 'Deniz Feneri',
+  'night factory': 'Gece Fabrika',
+};
+
+async function getGoonLocation() {
+  const response = await fetch('https://tarkov-goon-tracker.com/tr');
+  const html = await response.text();
+
+  // __NEXT_DATA__ JSON'unu çıkar
+  const match = html.match(/<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/);
+  if (!match) throw new Error('Goon verisi bulunamadı');
+
+  const data = JSON.parse(match[1]);
+  const trackings = data?.props?.pageProps?.trackings;
+
+  if (!trackings || trackings.length === 0) throw new Error('Goon izleme verisi yok');
+
+  // İlk geçerli raporu bul (bot/geçersiz kayıtları atla)
+  const latest = trackings.find(t => 
+    t.map?.slug && t.currentDate && t.currentDate !== 'Invalid Date'
+  );
+  if (!latest) throw new Error('Geçerli goon verisi bulunamadı');
+
+  const mapSlug = latest.map.slug;
+  const mapNameEN = latest.map.name || mapSlug;
+  const mapNameTR = MAP_NAMES_TR[mapSlug] || mapNameEN;
+  const time = latest.currentDate ? new Date(latest.currentDate) : null;
+
+  return { mapNameTR, mapNameEN, time };
+}
+
+app.get('/api/goons', async (req, res) => {
+  try {
+    const { mapNameTR, mapNameEN, time } = await getGoonLocation();
+
+    let timeStr = '';
+    if (time) {
+      const now = Date.now();
+      const diffMin = Math.floor((now - time.getTime()) / 60000);
+      if (diffMin < 60) {
+        timeStr = ` (${diffMin} dk önce)`;
+      } else {
+        const diffHr = Math.floor(diffMin / 60);
+        timeStr = ` (${diffHr} saat önce)`;
+      }
+    }
+
+    const format = req.query.format;
+    if (format === 'json') {
+      return res.json({ map: mapNameEN, mapTR: mapNameTR, time });
+    }
+
+    res.type('text/plain').send(`🎯 Goons: ${mapNameTR}${timeStr}`);
+  } catch (err) {
+    console.error('Goon tracker hatası:', err.message);
+    res.type('text/plain').send('Goon verisi alınamadı, lütfen daha sonra tekrar deneyin.');
+  }
+});
+
 // Health check
 app.get('/api/healthz', (req, res) => {
   res.json({ status: 'ok' });
