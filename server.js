@@ -324,11 +324,13 @@ const TRIVIA_QUESTIONS = [
 ];
 
 // Rastgele soru üret
+let lastQuestionIndex = -1;
+
 async function generateQuestion() {
   const type = Math.random();
   
-  // %40 mermi sorusu (API'den)
-  if (type < 0.4) {
+  // %15 mermi sorusu (API'den)
+  if (type < 0.15) {
     const ammo = await getAmmoData();
     if (ammo.length > 0) {
       const a = ammo[Math.floor(Math.random() * ammo.length)];
@@ -350,8 +352,13 @@ async function generateQuestion() {
     }
   }
   
-  // %60 bilgi sorusu (sabit)
-  return TRIVIA_QUESTIONS[Math.floor(Math.random() * TRIVIA_QUESTIONS.length)];
+  // %85 bilgi sorusu (sabit) — aynı soruyu tekrar sormaz
+  let idx;
+  do {
+    idx = Math.floor(Math.random() * TRIVIA_QUESTIONS.length);
+  } while (idx === lastQuestionIndex && TRIVIA_QUESTIONS.length > 1);
+  lastQuestionIndex = idx;
+  return TRIVIA_QUESTIONS[idx];
 }
 
 // Cevap karşılaştırma (büyük/küçük harf + Türkçe karakter duyarsız)
