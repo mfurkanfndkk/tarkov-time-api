@@ -237,33 +237,90 @@ function shortCaliber(cal) {
   return cal.replace('Caliber', '').replace('NATO', '').replace(/x/g, 'x');
 }
 
-// Sabit Tarkov bilgi soruları
+// Sabit Tarkov bilgi soruları (60+)
 const TRIVIA_QUESTIONS = [
-  { q: '🗺️ Customs haritasındaki kırmızı kart anahtarının adı nedir?', a: ['marked room', 'marked key', 'marked'], hint: 'Dorms 3. katta' },
+  // === BOSS & DÜŞMANLAR ===
   { q: '👑 Killa hangi haritada boss olarak çıkar?', a: ['interchange'], hint: 'Alışveriş merkezi' },
-  { q: '🎯 Head-Eyes ne demektir?', a: ['göze headshot', 'göz bölgesine isabet', 'gözden headshot', 'eye headshot', 'gözünden vurulma'], hint: 'Yüz hitbox' },
-  { q: '🔧 Hideout\'ta Bitcoin Farm\'ı kurmak için en az kaç GPU gerekir?', a: ['1', 'bir'], hint: 'Minimum sayı' },
+  { q: '👑 Reshala hangi haritada çıkar?', a: ['customs', 'gümrük'], hint: 'Yeni başlayanların haritası' },
+  { q: '👑 Reshala\'nın koruması kaç kişidir?', a: ['4', 'dört'], hint: '4-5 arası' },
+  { q: '👑 Tagilla hangi haritada çıkar?', a: ['factory', 'fabrika'], hint: 'En küçük harita' },
+  { q: '👑 Tagilla\'nın silahı nedir?', a: ['balyoz', 'çekiç', 'hammer', 'sledgehammer'], hint: 'Yakın dövüş silahı' },
+  { q: '👑 Glukhar hangi haritada çıkar?', a: ['reserve', 'rezerv'], hint: 'Askeri üs haritası' },
+  { q: '👑 Shturman hangi haritada çıkar?', a: ['woods', 'orman'], hint: 'Ağaçlık harita' },
+  { q: '👑 Shturman\'ın sniper\'ı ne menzile kadar etkilidir?', a: ['300', '300m'], hint: 'Yüzlerce metre' },
+  { q: '👑 Sanitar hangi haritada çıkar?', a: ['shoreline', 'kıyı şeridi'], hint: 'Resort haritası' },
+  { q: '👑 Killa hangi zırhı giyer?', a: ['maska', 'maska-1sch', 'vulkan'], hint: 'Yüz koruyucu kask' },
+  { q: '💀 Cultist\'ler hangi saatte çıkar?', a: ['gece', 'night', 'gece vakti'], hint: 'Karanlıkta' },
+  { q: '💀 Cultist\'lerin bıçağı ne yapar?', a: ['zehirler', 'poison', 'zehir'], hint: 'Sağlık etkisi' },
+  { q: '🤖 Raider\'lar en çok hangi haritada çıkar?', a: ['labs', 'lab', 'reserve', 'rezerv'], hint: 'Askeri düşmanlar' },
+
+  // === HARİTALAR ===
+  { q: '🗺️ Tarkov\'daki en küçük harita hangisidir?', a: ['factory', 'fabrika'], hint: 'CQB haritası' },
+  { q: '🗺️ Tarkov\'daki en büyük harita hangisidir?', a: ['shoreline', 'kıyı şeridi'], hint: 'Resort binası var' },
+  { q: '🗺️ Customs\'daki Dorms kaç katlıdır? (büyük bina)', a: ['3', 'üç'], hint: 'Marked room en üstte' },
+  { q: '🗺️ Reserve haritasındaki yeraltı çıkışının adı nedir?', a: ['d-2', 'd2', 'bunker'], hint: 'Güç açılmalı' },
+  { q: '🗺️ Interchange\'deki alışveriş merkezinin adı nedir?', a: ['ultra', 'ultra mall'], hint: 'Büyük AVM' },
+  { q: '🗺️ Factory haritasının raid süresi kaç dakikadır?', a: ['20', 'yirmi'], hint: 'En kısa raid' },
+  { q: '🗺️ Lighthouse\'daki su altı çıkışı için ne gerekir?', a: ['rebreather', 'dalış ekipmanı', 'scuba'], hint: 'Sualtı ekipmanı' },
+  { q: '🗺️ Streets of Tarkov\'daki sinema salonunun adı nedir?', a: ['cinema', 'razvedka', 'concordia'], hint: 'Film izlenen yer' },
+  { q: '🗺️ Ground Zero hangi seviyeye kadar zorunlu haritadır?', a: ['20', 'yirmi', 'lvl 20'], hint: 'Çift haneli seviye' },
+
+  // === SİLAHLAR & MERMİ ===
+  { q: '🔫 Mosin silahı hangi ülke kaynaklıdır?', a: ['rusya', 'russia', 'rus'], hint: 'Doğu Avrupa' },
+  { q: '🔫 Tarkov\'da en yüksek kalibre mermi hangisidir?', a: ['12.7x55', '12.7', 'ash-12'], hint: '12 ile başlar' },
+  { q: '🔫 M4A1 hangi kalibre kullanır?', a: ['5.56x45', '5.56', '556'], hint: 'NATO standartı' },
+  { q: '🔫 AK-74 hangi kalibre kullanır?', a: ['5.45x39', '5.45', '545'], hint: 'Sovyet kalibresi' },
+  { q: '🔫 SVD hangi tür bir silahtır?', a: ['sniper', 'keskin nişancı', 'dmr', 'marksman'], hint: 'Uzun menzil' },
+  { q: '🔫 MP7 hangi kalibre kullanır?', a: ['4.6x30', '4.6'], hint: 'Çok küçük kalibre' },
+  { q: '🔫 Saiga-12 ne tür bir silahtır?', a: ['shotgun', 'pompalı', 'yarı otomatik pompalı'], hint: '12 gauge' },
+  { q: '🔫 Vector hangi kalibrelerde gelir?', a: ['9x19', '45 acp', '.45', '9mm'], hint: 'İki farklı versiyon' },
+  { q: '🔫 RPK ne tür bir silahtır?', a: ['lmg', 'hafif makineli', 'makineli tüfek', 'machine gun'], hint: 'Yüksek şarjör kapasitesi' },
+
+  // === TÜCCARLAR ===
+  { q: '🏪 Therapist\'in (Doktor) asıl adı nedir?', a: ['elvira khabibullina', 'elvira'], hint: 'Bir kadın ismi' },
+  { q: '🏪 Peacekeeper hangi para birimini kabul eder?', a: ['dolar', 'usd', 'dollar'], hint: 'Amerikan parası' },
+  { q: '🏪 Prapor\'un uzmanlık alanı nedir?', a: ['silah', 'weapon', 'guns', 'tüfek', 'ateşli silahlar'], hint: 'Savaş ekipmanı' },
+  { q: '🏪 Ragman ne satar?', a: ['kıyafet', 'zırh', 'giyim', 'clothing', 'armor'], hint: 'Giyilebilir eşyalar' },
+  { q: '🏪 Mechanic\'in uzmanlık alanı nedir?', a: ['silah modifikasyon', 'modding', 'weapon modding', 'silah parçaları', 'modifikasyon'], hint: 'Silah geliştirme' },
+  { q: '🏪 Jaeger\'ı açmak için hangi görevi tamamlamak gerekir?', a: ['introduction', 'tanışma', 'intro'], hint: 'Mechanic\'in görevi' },
+  { q: '🏪 Fence (Çitçi) ne tür eşyalar satar?', a: ['rastgele', 'random', 'karışık', 'her şey', 'diğer oyuncuların sattığı'], hint: 'Her şeyden biraz' },
+  { q: '🏪 Lightkeeper hangi haritada bulunur?', a: ['lighthouse', 'deniz feneri'], hint: 'Harita adında var' },
+
+  // === OYUN MEKANİKLERİ ===
+  { q: '⏱️ Tarkov\'da oyun içi zaman gerçek zamanın kaç katı hızında ilerler?', a: ['7', 'yedi', '7x'], hint: 'Tek haneli bir sayı' },
   { q: '💉 Tarkov\'da kaç farklı vücut bölgesi hasar alabilir? (kol ve bacaklar ayrı)', a: ['7', 'yedi'], hint: 'Kafa, göğüs, mide, 2 kol, 2 bacak' },
   { q: '🏃 PMC\'nin varsayılan çanta boyutu (pouch) kaçtır? (standart versiyon)', a: ['2x2', '4', 'alpha'], hint: 'Alpha Container' },
-  { q: '👑 Reshala\'nın koruması kaç kişidir?', a: ['4', 'dört'], hint: '4-5 arası' },
-  { q: '🔑 Labs haritasına girmek için ne gerekir?', a: ['keycard', 'access keycard', 'lab keycard', 'labs keycard', 'kart', 'lab kartı', 'giriş kartı'], hint: 'Bir kart' },
-  { q: '💀 Tarkov\'da Scav olarak çıktığında PMC\'lere karşı savaşabilir misin?', a: ['evet', 'yes', 'e'], hint: 'Evet veya Hayır' },
-  { q: '🎒 Tarkov\'daki en büyük sırt çantasının adı nedir?', a: ['pillbox', 'pilgrim', 'raid backpack'], hint: 'Mavi büyük çanta' },
-  { q: '⏱️ Tarkov\'da oyun içi zaman gerçek zamanın kaç katı hızında ilerler?', a: ['7', 'yedi', '7x'], hint: 'Tek haneli bir sayı' },
-  { q: '🏪 Fence (Çitçi) hangi seviyede Scav Karma ile özel teklif verir?', a: ['6', 'altı', '6.0'], hint: 'En yüksek karma seviyesi' },
-  { q: '💰 Therapist\'in (Doktor) asıl adı nedir?', a: ['elvira khabibullina', 'elvira'], hint: 'Bir kadın ismi' },
-  { q: '🔫 Mosin silahı hangi ülke kaynaklıdır?', a: ['rusya', 'russia', 'rus'], hint: 'Doğu Avrupa' },
-  { q: '👑 Tagilla hangi haritada çıkar?', a: ['factory', 'fabrika'], hint: 'En küçük harita' },
-  { q: '🎯 Tarkov\'da "chad" ne anlama gelir?', a: ['agresif oyuncu', 'şovalye oyuncu', 'iyi donanımlı agresif oyuncu', 'tam ekipli agresif oyuncu', 'agresif', 'full gear oyuncu'], hint: 'Tam donanımlı agresif' },
-  { q: '💀 Tarkov\'da "rat" ne anlama gelir?', a: ['sinsi oyuncu', 'gizlenen oyuncu', 'pasif oyuncu', 'fare', 'loot goblini'], hint: 'Chad\'ın tersi' },
-  { q: '🗺️ Tarkov\'daki en büyük harita hangisidir?', a: ['shoreline', 'kıyı şeridi', 'sahil'], hint: 'Resort binası var' },
-  { q: '🏥 LEDX hangi haritada en çok bulunur?', a: ['labs', 'lab', 'the lab', 'laboratuvar'], hint: 'Giriş kartı gereken harita' },
-  { q: '🔫 İlk silah mekanik ustası kimdir? (Seviye 1)', a: ['prapor', 'mecur'], hint: 'Rus asker' },
-  { q: '👑 Glukhar hangi haritada çıkar?', a: ['reserve', 'rezerv'], hint: 'Askeri üs haritası' },
   { q: '🎒 Secure Container "Gamma" kaç slot\'tur?', a: ['3x3', '9'], hint: 'EOD versiyonu' },
   { q: '💀 Wipe ne demektir?', a: ['sıfırlama', 'resetleme', 'herkesin baştan başlaması', 'reset', 'sıfırdan başlama'], hint: 'Her şey sıfırlanır' },
-  { q: '🏪 Jaeger\'ı açmak için hangi görevi tamamlamak gerekir?', a: ['introduction', 'tanışma', 'intro'], hint: 'Mechanic\'in görevi' },
-  { q: '🔫 Tarkov\'da en yüksek kalibre mermi hangisidir?', a: ['12.7x55', '12.7', 'ash-12', '12.7x108'], hint: '12 ile başlar' },
+  { q: '🎯 Head-Eyes ne demektir?', a: ['göze headshot', 'göz bölgesine isabet', 'gözden headshot', 'eye headshot'], hint: 'Yüz hitbox' },
+  { q: '🎯 Tarkov\'da "chad" ne anlama gelir?', a: ['agresif oyuncu', 'iyi donanımlı agresif oyuncu', 'agresif', 'full gear oyuncu'], hint: 'Tam donanımlı agresif' },
+  { q: '💀 Tarkov\'da "rat" ne anlama gelir?', a: ['sinsi oyuncu', 'gizlenen oyuncu', 'pasif oyuncu', 'fare'], hint: 'Chad\'ın tersi' },
+  { q: '🔧 Hideout\'ta Bitcoin Farm\'ı kurmak için en az kaç GPU gerekir?', a: ['1', 'bir'], hint: 'Minimum sayı' },
+  { q: '💰 Flea Market kaçıncı seviyede açılır?', a: ['15', 'on beş'], hint: '10 ile 20 arası' },
+  { q: '🏪 Fence\'den Scav Karma ile özel teklif hangi seviyede açılır?', a: ['6', 'altı'], hint: 'En yüksek karma' },
+  { q: '🔑 Labs haritasına girmek için ne gerekir?', a: ['keycard', 'access keycard', 'lab keycard', 'kart', 'giriş kartı'], hint: 'Bir kart' },
+
+  // === İTEMLER & LOOT ===
+  { q: '🏥 LEDX hangi haritada en çok bulunur?', a: ['labs', 'lab', 'laboratuvar'], hint: 'Giriş kartı gereken harita' },
+  { q: '💊 Tarkov\'da kırık kemiği tedavi etmek için ne kullanılır?', a: ['splint', 'cms', 'surv12', 'atel'], hint: 'Ortopedik malzeme' },
+  { q: '💉 Propital ne işe yarar?', a: ['ağrı kesici', 'painkiller', 'stimulant', 'can yenileme'], hint: 'Stimülant ilaç' },
+  { q: '🔑 Customs\'daki Marked Room anahtarı en fazla kaç kez kullanılabilir?', a: ['25', 'yirmi beş'], hint: '20 ile 30 arası' },
+  { q: '💰 Bitcoin\'in oyundaki Therapist\'e satış fiyatı yaklaşık kaçtır?', a: ['100000', '100k', '100.000', 'yüz bin'], hint: '6 haneli ruble' },
+  { q: '🎒 Tarkov\'daki en değerli single-slot item nedir?', a: ['ledx', 'gpu', 'graphics card', 'btc', 'bitcoin'], hint: 'Tek slot, çok değerli' },
+  { q: '💊 Tarkov\'da ağır kanamayı durdurmak için ne kullanılır?', a: ['tourniquet', 'hemostat', 'esmarch', 'calok', 'turnike'], hint: 'Tıbbi malzeme' },
+  { q: '🔋 Tarkov\'da yakın mesafe iletişim cihazının adı nedir?', a: ['walkie-talkie', 'radio', 'telsiz'], hint: 'Haberleşme aracı' },
+
+  // === GENEL BİLGİ & LORE ===
+  { q: '🌍 Tarkov hangi ülkede geçiyor?', a: ['rusya', 'russia', 'rus'], hint: 'Doğu Avrupa' },
+  { q: '🏢 Tarkov\'u yapan şirketin adı nedir?', a: ['battlestate games', 'bsg', 'battlestate'], hint: '3 harfli kısaltma' },
+  { q: '⚔️ PMC\'nin açılımı nedir?', a: ['private military company', 'private military contractor', 'özel askeri şirket'], hint: 'Özel askeri...' },
+  { q: '⚔️ Tarkov\'daki iki PMC grubunun adı nedir?', a: ['bear usec', 'usec bear', 'bear ve usec'], hint: 'Bir Rus, bir Batılı' },
+  { q: '🐻 BEAR hangi ülkenin PMC\'sidir?', a: ['rusya', 'russia', 'rus'], hint: 'Ayı sembolü' },
+  { q: '🦅 USEC hangi ülkenin PMC\'sidir?', a: ['amerika', 'abd', 'usa', 'united states'], hint: 'Batılı güç' },
+  { q: '🗺️ Customs haritasındaki kırmızı kart anahtarının adı nedir?', a: ['marked room', 'marked key', 'marked'], hint: 'Dorms 3. katta' },
+  { q: '🎮 Tarkov\'un tam adı nedir?', a: ['escape from tarkov', 'tarkovdan kaçış'], hint: 'Escape from...' },
+  { q: '📅 Tarkov ilk ne zaman duyuruldu?', a: ['2016', '2015'], hint: '2010\'ların ortası' },
+  { q: '🎮 Tarkov\'un oyun motoru nedir?', a: ['unity', 'üniti'], hint: 'Popüler oyun motoru' },
 ];
 
 // Rastgele soru üret
