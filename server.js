@@ -391,6 +391,14 @@ app.get('/api/quiz/question', async (req, res) => {
   }
 });
 
+// Debug - Botrix'in ne gönderdiğini göster
+app.get('/api/quiz/debug', (req, res) => {
+  const fullUrl = req.originalUrl;
+  const user = req.query.user || 'YOK';
+  const answer = req.query.answer || req.query.a || 'YOK';
+  res.type('text/plain').send(`URL: ${fullUrl} | User: ${user} | Answer: "${answer}"`);
+});
+
 // Cevap kontrol
 app.get('/api/quiz/answer', async (req, res) => {
   try {
