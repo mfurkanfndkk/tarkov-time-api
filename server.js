@@ -338,7 +338,7 @@ async function generateQuestion() {
         return {
           q: `🔫 Penetrasyon: ${a.penetrationPower}, Hasar: ${a.damage}, Kalibre: ${cal}. Bu hangi mermi?`,
           a: [a.item.name.toLowerCase(), a.item.shortName.toLowerCase()],
-          hint: `${a.item.shortName}`
+          hint: `${a.item.shortName.charAt(0)}${'_'.repeat(a.item.shortName.length - 1)} (${a.item.shortName.length} harf)`
         };
       } else {
         return {
