@@ -189,6 +189,236 @@ app.get('/api/event', async (req, res) => {
   }
 });
 
+// ========== QUIZ SİSTEMİ ==========
+// Upstash Redis ile kalıcı skor + tarkov.dev API ile dinamik sorular
+
+const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+// Redis REST API yardımcı fonksiyonu
+async function redis(command) {
+  const res = await fetch(`${REDIS_URL}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${REDIS_TOKEN}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(command)
+  });
+  const data = await res.json();
+  return data.result;
+}
+
+// tarkov.dev'den mermi verisi çek (cache'li)
+let ammoCache = null;
+let ammoCacheTime = 0;
+
+async function getAmmoData() {
+  if (ammoCache && Date.now() - ammoCacheTime < 3600000) return ammoCache;
+  
+  try {
+    const query = `{ ammo { item { name shortName } caliber penetrationPower damage } }`;
+    const res = await fetch('https://api.tarkov.dev/graphql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query })
+    });
+    const data = await res.json();
+    ammoCache = data.data.ammo.filter(a => a.penetrationPower >= 25 && a.item.name);
+    ammoCacheTime = Date.now();
+    return ammoCache;
+  } catch {
+    return [];
+  }
+}
+
+// Kalibre adlarını kısa yap
+function shortCaliber(cal) {
+  return cal.replace('Caliber', '').replace('NATO', '').replace(/x/g, 'x');
+}
+
+// Sabit Tarkov bilgi soruları
+const TRIVIA_QUESTIONS = [
+  { q: '🗺️ Customs haritasındaki kırmızı kart anahtarının adı nedir?', a: ['marked room', 'marked key', 'marked'], hint: 'Dorms 3. katta' },
+  { q: '👑 Killa hangi haritada boss olarak çıkar?', a: ['interchange'], hint: 'Alışveriş merkezi' },
+  { q: '🎯 Head-Eyes ne demektir?', a: ['göze headshot', 'göz bölgesine isabet', 'gözden headshot', 'eye headshot', 'gözünden vurulma'], hint: 'Yüz hitbox' },
+  { q: '🔧 Hideout\'ta Bitcoin Farm\'ı kurmak için en az kaç GPU gerekir?', a: ['1', 'bir'], hint: 'Minimum sayı' },
+  { q: '💉 Tarkov\'da kaç farklı vücut bölgesi hasar alabilir? (kol ve bacaklar ayrı)', a: ['7', 'yedi'], hint: 'Kafa, göğüs, mide, 2 kol, 2 bacak' },
+  { q: '🏃 PMC\'nin varsayılan çanta boyutu (pouch) kaçtır? (standart versiyon)', a: ['2x2', '4', 'alpha'], hint: 'Alpha Container' },
+  { q: '👑 Reshala\'nın koruması kaç kişidir?', a: ['4', 'dört'], hint: '4-5 arası' },
+  { q: '🔑 Labs haritasına girmek için ne gerekir?', a: ['keycard', 'access keycard', 'lab keycard', 'labs keycard', 'kart', 'lab kartı', 'giriş kartı'], hint: 'Bir kart' },
+  { q: '💀 Tarkov\'da Scav olarak çıktığında PMC\'lere karşı savaşabilir misin?', a: ['evet', 'yes', 'e'], hint: 'Evet veya Hayır' },
+  { q: '🎒 Tarkov\'daki en büyük sırt çantasının adı nedir?', a: ['pillbox', 'pilgrim', 'raid backpack'], hint: 'Mavi büyük çanta' },
+  { q: '⏱️ Tarkov\'da oyun içi zaman gerçek zamanın kaç katı hızında ilerler?', a: ['7', 'yedi', '7x'], hint: 'Tek haneli bir sayı' },
+  { q: '🏪 Fence (Çitçi) hangi seviyede Scav Karma ile özel teklif verir?', a: ['6', 'altı', '6.0'], hint: 'En yüksek karma seviyesi' },
+  { q: '💰 Therapist\'in (Doktor) asıl adı nedir?', a: ['elvira khabibullina', 'elvira'], hint: 'Bir kadın ismi' },
+  { q: '🔫 Mosin silahı hangi ülke kaynaklıdır?', a: ['rusya', 'russia', 'rus'], hint: 'Doğu Avrupa' },
+  { q: '👑 Tagilla hangi haritada çıkar?', a: ['factory', 'fabrika'], hint: 'En küçük harita' },
+  { q: '🎯 Tarkov\'da "chad" ne anlama gelir?', a: ['agresif oyuncu', 'şovalye oyuncu', 'iyi donanımlı agresif oyuncu', 'tam ekipli agresif oyuncu', 'agresif', 'full gear oyuncu'], hint: 'Tam donanımlı agresif' },
+  { q: '💀 Tarkov\'da "rat" ne anlama gelir?', a: ['sinsi oyuncu', 'gizlenen oyuncu', 'pasif oyuncu', 'fare', 'loot goblini'], hint: 'Chad\'ın tersi' },
+  { q: '🗺️ Tarkov\'daki en büyük harita hangisidir?', a: ['shoreline', 'kıyı şeridi', 'sahil'], hint: 'Resort binası var' },
+  { q: '🏥 LEDX hangi haritada en çok bulunur?', a: ['labs', 'lab', 'the lab', 'laboratuvar'], hint: 'Giriş kartı gereken harita' },
+  { q: '🔫 İlk silah mekanik ustası kimdir? (Seviye 1)', a: ['prapor', 'mecur'], hint: 'Rus asker' },
+  { q: '👑 Glukhar hangi haritada çıkar?', a: ['reserve', 'rezerv'], hint: 'Askeri üs haritası' },
+  { q: '🎒 Secure Container "Gamma" kaç slot\'tur?', a: ['3x3', '9'], hint: 'EOD versiyonu' },
+  { q: '💀 Wipe ne demektir?', a: ['sıfırlama', 'resetleme', 'herkesin baştan başlaması', 'reset', 'sıfırdan başlama'], hint: 'Her şey sıfırlanır' },
+  { q: '🏪 Jaeger\'ı açmak için hangi görevi tamamlamak gerekir?', a: ['introduction', 'tanışma', 'intro'], hint: 'Mechanic\'in görevi' },
+  { q: '🔫 Tarkov\'da en yüksek kalibre mermi hangisidir?', a: ['12.7x55', '12.7', 'ash-12', '12.7x108'], hint: '12 ile başlar' },
+];
+
+// Rastgele soru üret
+async function generateQuestion() {
+  const type = Math.random();
+  
+  // %40 mermi sorusu (API'den)
+  if (type < 0.4) {
+    const ammo = await getAmmoData();
+    if (ammo.length > 0) {
+      const a = ammo[Math.floor(Math.random() * ammo.length)];
+      const cal = shortCaliber(a.caliber);
+      
+      if (Math.random() < 0.5) {
+        return {
+          q: `🔫 Penetrasyon: ${a.penetrationPower}, Hasar: ${a.damage}, Kalibre: ${cal}. Bu hangi mermi?`,
+          a: [a.item.name.toLowerCase(), a.item.shortName.toLowerCase()],
+          hint: `${a.item.shortName}`
+        };
+      } else {
+        return {
+          q: `🔫 "${a.item.shortName}" mermisinin penetrasyon değeri kaçtır?`,
+          a: [String(a.penetrationPower)],
+          hint: `${a.penetrationPower > 40 ? '40 üstü' : '40 altı'}`
+        };
+      }
+    }
+  }
+  
+  // %60 bilgi sorusu (sabit)
+  return TRIVIA_QUESTIONS[Math.floor(Math.random() * TRIVIA_QUESTIONS.length)];
+}
+
+// Cevap karşılaştırma (büyük/küçük harf + Türkçe karakter duyarsız)
+function normalizeAnswer(text) {
+  return text
+    .toLowerCase()
+    .replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ü/g, 'u')
+    .replace(/ş/g, 's').replace(/ç/g, 'c').replace(/ğ/g, 'g')
+    .replace(/[^a-z0-9 ]/g, '')
+    .trim();
+}
+
+function isCorrectAnswer(userAnswer, correctAnswers) {
+  const norm = normalizeAnswer(userAnswer);
+  return correctAnswers.some(a => {
+    const normA = normalizeAnswer(a);
+    return norm === normA || norm.includes(normA) || normA.includes(norm);
+  });
+}
+
+// === QUIZ ENDPOINTS ===
+
+// Yeni soru al
+app.get('/api/quiz/question', async (req, res) => {
+  try {
+    const question = await generateQuestion();
+    
+    // Aktif soruyu Redis'e kaydet
+    await redis(['SET', 'quiz:active', JSON.stringify(question)]);
+    await redis(['SET', 'quiz:answered', 'false']);
+    await redis(['SET', 'quiz:time', String(Date.now())]);
+    
+    res.type('text/plain').send(`❓ ${question.q} (💡 İpucu: ${question.hint}) — !c ile cevapla`);
+  } catch (err) {
+    console.error('Quiz hatası:', err.message);
+    res.type('text/plain').send('Quiz sorusu yüklenemedi.');
+  }
+});
+
+// Cevap kontrol
+app.get('/api/quiz/answer', async (req, res) => {
+  try {
+    const user = req.query.user;
+    const answer = req.query.answer || req.query.a || '';
+    
+    if (!user || !answer) {
+      return res.type('text/plain').send('Kullanım: !c <cevap>');
+    }
+
+    // Aktif soru var mı?
+    const activeJson = await redis(['GET', 'quiz:active']);
+    if (!activeJson) {
+      return res.type('text/plain').send('❌ Aktif soru yok. !quiz yazarak yeni soru al.');
+    }
+
+    // Zaten cevaplanmış mı?
+    const answered = await redis(['GET', 'quiz:answered']);
+    if (answered === 'true') {
+      return res.type('text/plain').send('⏰ Bu soru zaten cevaplanmış. !quiz ile yeni soru al.');
+    }
+
+    const question = JSON.parse(activeJson);
+
+    if (isCorrectAnswer(answer, question.a)) {
+      // Doğru cevap!
+      await redis(['SET', 'quiz:answered', 'true']);
+      
+      // Skoru artır (sorted set)
+      await redis(['ZINCRBY', 'quiz:scores', 1, user]);
+      
+      // Toplam skoru al
+      const score = await redis(['ZSCORE', 'quiz:scores', user]);
+      
+      res.type('text/plain').send(`✅ @${user} doğru bildi! +1 puan (Toplam: ${Math.floor(score)} puan) 🎉`);
+    } else {
+      res.type('text/plain').send(`❌ @${user} yanlış! Tekrar dene.`);
+    }
+  } catch (err) {
+    console.error('Cevap hatası:', err.message);
+    res.type('text/plain').send('Bir hata oluştu.');
+  }
+});
+
+// Skor tablosu
+app.get('/api/quiz/scoreboard', async (req, res) => {
+  try {
+    const scores = await redis(['ZREVRANGE', 'quiz:scores', 0, 4, 'WITHSCORES']);
+    
+    if (!scores || scores.length === 0) {
+      return res.type('text/plain').send('🏆 Henüz skor yok. !quiz ile başla!');
+    }
+
+    // scores: [user1, score1, user2, score2, ...]
+    let board = '🏆 ';
+    const medals = ['🥇', '🥈', '🥉', '4.', '5.'];
+    for (let i = 0; i < scores.length; i += 2) {
+      const rank = i / 2;
+      board += `${medals[rank]} ${scores[i]}: ${Math.floor(scores[i + 1])}p `;
+      if (rank < (scores.length / 2) - 1) board += '| ';
+    }
+    
+    res.type('text/plain').send(board.trim());
+  } catch (err) {
+    console.error('Skor hatası:', err.message);
+    res.type('text/plain').send('Skor tablosu yüklenemedi.');
+  }
+});
+
+// Skor sıfırlama (streamer için)
+app.get('/api/quiz/reset', async (req, res) => {
+  try {
+    const key = req.query.key;
+    if (key !== 'furkan2026') {
+      return res.type('text/plain').send('⛔ Yetkisiz.');
+    }
+    await redis(['DEL', 'quiz:scores']);
+    await redis(['DEL', 'quiz:active']);
+    await redis(['DEL', 'quiz:answered']);
+    res.type('text/plain').send('🔄 Scoreboard sıfırlandı!');
+  } catch (err) {
+    res.type('text/plain').send('Hata oluştu.');
+  }
+});
+
 // Health check
 app.get('/api/healthz', (req, res) => {
   res.json({ status: 'ok' });
