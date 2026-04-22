@@ -230,6 +230,126 @@ app.get('/api/bot', (req, res) => {
   res.type('text/plain').send(`🤖 ${user}: "${roast}"`);
 });
 
+// ========== BAHANE ÜRETİCİ ==========
+// Parçalar birleşerek binlerce farklı bahane üretir
+
+const BAHANE_SEBEP = [
+  'Desync yüzünden',
+  'Server lag\'ı yüzünden',
+  'Mouse\'um kaydı',
+  'Mouse pili bitti',
+  'Klavye takıldı',
+  'Alt+Tab yaptım yanlışlıkla',
+  'Kapı çaldı',
+  'Annem çağırdı',
+  'Telefon çaldı',
+  'Kedi klavyeye bastı',
+  'Kedi monitörün önüne geçti',
+  'Köpek kablosunu çekti',
+  'İnternet gitti',
+  'Ping 999 oldu',
+  'FPS 5\'e düştü',
+  'Güneş gözüme geldi',
+  'Ekranda parlama vardı',
+  'Karşıdaki adam hacker',
+  'Karşıdaki adam radar kullanıyor',
+  'Elim titredi',
+  'Hapşurdum o anda',
+  'Gözüm kaşındı',
+  'Çay döküldü klavyeye',
+  'Su içiyordum',
+  'Bisküvi yiyordum',
+  'Kulaklık düştü',
+  'Discord bildirimi geldi',
+  'Steam güncellemesi çıktı',
+  'Windows update başladı',
+  'Sandalye kaydı',
+  'Mousepad bitti',
+  'O an aklıma başka şey geldi',
+  'Gözlüğüm buğulandı',
+  'Ellerim terdi',
+  'Komşu inşaat yapıyordu',
+  'Odaya biri girdi',
+  'Ekran dondu bi anlık',
+  'Monitor renkleri bozuldu',
+  'Ses kısıktı duyamadım',
+  'Yanlış tuşa bastım',
+];
+
+const BAHANE_DETAY = [
+  'yoksa kesin öldürüyordum',
+  'ben headshot attım ama kayıt olmadı',
+  'normalde böyle oynamam',
+  'bugün formum düşük',
+  'dün gece uyumadım ondan',
+  'soğuk algınlığından ellerim titriyor',
+  'yeni mouse\'a alışamadım',
+  'yeni klavyeye alışıyorum',
+  'ayarları değiştirdim daha',
+  'sensitivity yanlıştı',
+  'ses ayarı bozuktu',
+  'karanlıktan görüntü seçemedim',
+  'spawn noktası çöptü',
+  'adam duvarın içinden vurdu',
+  'mermi sapma yaptı',
+  'zırh hiç korumadı',
+  'o silah zaten kötü',
+  'mermi stokum bitmişti',
+  'iyileşmeye fırsat bulamadım',
+  'bacaklarım kırıktı yapacak bir şey yok',
+  'grenadeı engel olmasa öldürüyordum',
+  'soundlar yanlış yerden geldi',
+  'minimap\'e bakıyordum',
+  'arkamı kontrol ediyordum',
+  'loot bakıyordum o sırada',
+  'çantayı düzenliyordum',
+  'silah jam yaptı',
+  'durbin takılıydı',
+  'tam reload atıyordum',
+];
+
+const BAHANE_FINAL = [
+  'Bir dahakine görürsünüz.',
+  'Bu benim suçum değil.',
+  'BSG düzeltsin bunu.',
+  'Yemin ederim ben iyiyim normalde.',
+  'Kanıtlarım var, replay\'i izleyin.',
+  'Yayını izleyenler şahit.',
+  'Adalet istiyorum.',
+  'Tarkov bu ya, normal.',
+  'Bu oyun bozuk zaten.',
+  'Rage quit hakkım var.',
+  'Herkesin başına gelir.',
+  'Bir daha olmaz... belki.',
+  'Ben pes etmem ama bugün zor.',
+  'Ama K/D\'m yine pozitif... sanırım.',
+  'Neyse bir çay alayım.',
+  'İddia ediyorum hacker bu.',
+  'Adam 1000 saat oynamıştır.',
+  'Bug report açıyorum.',
+  'Yarın daha iyi olacak inşallah.',
+];
+
+app.get('/api/bahane', (req, res) => {
+  const p = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+  // %30 çift sebep (daha komik)
+  let sebep;
+  if (Math.random() < 0.3) {
+    let s1 = p(BAHANE_SEBEP);
+    let s2 = p(BAHANE_SEBEP);
+    while (s2 === s1) s2 = p(BAHANE_SEBEP);
+    sebep = `${s1} + ${s2.toLowerCase()}`;
+  } else {
+    sebep = p(BAHANE_SEBEP);
+  }
+
+  const detay = p(BAHANE_DETAY);
+  const final = p(BAHANE_FINAL);
+
+  res.type('text/plain').send(`😤 Resmi Bahane: ${sebep}, ${detay}. ${final}`);
+});
+
 // ========== LOADOUT CHALLENGE ==========
 
 const LOADOUT_WEAPONS = [
