@@ -189,6 +189,107 @@ app.get('/api/event', async (req, res) => {
   }
 });
 
+// ========== LOADOUT CHALLENGE ==========
+
+const LOADOUT_WEAPONS = [
+  { name: 'Mosin', tier: 'ucuz' },
+  { name: 'SKS', tier: 'ucuz' },
+  { name: 'VPO-209', tier: 'ucuz' },
+  { name: 'Saiga-9', tier: 'ucuz' },
+  { name: 'MP-153', tier: 'ucuz' },
+  { name: 'TOZ-106', tier: 'ucuz' },
+  { name: 'Double Barrel', tier: 'ucuz' },
+  { name: 'PP-91 Kedr', tier: 'ucuz' },
+  { name: 'AK-74N', tier: 'orta' },
+  { name: 'AKM', tier: 'orta' },
+  { name: 'MP5', tier: 'orta' },
+  { name: 'UMP-45', tier: 'orta' },
+  { name: 'OP-SKS', tier: 'orta' },
+  { name: 'RFB', tier: 'orta' },
+  { name: 'ADAR', tier: 'orta' },
+  { name: 'Shotgun MP-155', tier: 'orta' },
+  { name: 'M4A1', tier: 'pahalı' },
+  { name: 'HK 416', tier: 'pahalı' },
+  { name: 'Vector 9mm', tier: 'pahalı' },
+  { name: 'Vector .45', tier: 'pahalı' },
+  { name: 'MCX', tier: 'pahalı' },
+  { name: 'SVD', tier: 'pahalı' },
+  { name: 'RSASS', tier: 'pahalı' },
+  { name: 'SR-25', tier: 'pahalı' },
+  { name: 'P90', tier: 'pahalı' },
+  { name: 'RPK-16', tier: 'pahalı' },
+  { name: 'MK-18', tier: 'pahalı' },
+  { name: 'ASH-12', tier: 'pahalı' },
+  { name: 'Sadece Tabanca (PM)', tier: 'troll' },
+  { name: 'Sadece Tabanca (Five-Seven)', tier: 'troll' },
+  { name: 'Sadece Bıçak', tier: 'troll' },
+  { name: 'Sadece El Bombası', tier: 'troll' },
+];
+
+const LOADOUT_ARMOR = [
+  { name: 'PACA', tier: 'ucuz' },
+  { name: 'Zırh yok!', tier: 'ucuz' },
+  { name: '6B23-1', tier: 'ucuz' },
+  { name: 'BNTI Kirasa', tier: 'orta' },
+  { name: 'Trooper', tier: 'orta' },
+  { name: 'TV-110 rig', tier: 'orta' },
+  { name: 'Korund', tier: 'pahalı' },
+  { name: 'Slick', tier: 'pahalı' },
+  { name: 'Hex Grid', tier: 'pahalı' },
+  { name: 'Zabralo', tier: 'pahalı' },
+];
+
+const LOADOUT_BACKPACKS = [
+  'Sling', 'Berkut', 'Scav BP', 'Pilgrim', 'Attack 2', 'Çanta yok!'
+];
+
+const LOADOUT_MAPS = [
+  'Customs', 'Woods', 'Shoreline', 'Interchange', 'Reserve', 'Lighthouse', 'Factory', 'Streets', 'Ground Zero'
+];
+
+const LOADOUT_CHALLENGES = [
+  'Sadece iron sight!',
+  'Sussturucusuz oyna!',
+  'İlk gördüğün PMC\'ye koş!',
+  'Sadece tek el ateş!',
+  'Prone\'dan kalkma yasak!',
+  'İlk 2 dakika ateş etme!',
+  'Sadece hipfire!',
+  'Loot alma — sadece kill!',
+  'Sadece bacaklara ateş et!',
+  'Haritada en yüksek noktaya git, oradan savaş!',
+  'Her öldürme sonrası silah değiştir!',
+  'Ekstra şart yok, bol şans!',
+  'Sadece topladığın mermilerle oyna!',
+  'Zırhlı rig giy, zırh giyme!',
+  'Spawn\'dan 1 dakika boyunca geriye koş!',
+  'Sadece headshot at!',
+  'Yürüyerek oyna, koşma yasak!',
+  'Bulunan ilk silahla devam et, kendinkini bırak!',
+  'Flashbang at, sonra rush!',
+  'Arkadaşınla sırt sırta verin, ayrılma yasak!',
+];
+
+function pick(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+app.get('/api/loadout', (req, res) => {
+  const weapon = pick(LOADOUT_WEAPONS);
+  const armor = pick(LOADOUT_ARMOR);
+  const backpack = pick(LOADOUT_BACKPACKS);
+  const map = pick(LOADOUT_MAPS);
+  const challenge = pick(LOADOUT_CHALLENGES);
+
+  // Bütçe hesapla
+  const tierBudget = { ucuz: '50-100K₽', orta: '150-250K₽', pahalı: '300-500K₽', troll: '???₽' };
+  const budget = tierBudget[weapon.tier] || '100-200K₽';
+
+  res.type('text/plain').send(
+    `🎲 LOADOUT CHALLENGE → Silah: ${weapon.name} | Zırh: ${armor.name} | Çanta: ${backpack} | Harita: ${map} | Bütçe: ${budget} | 🔥 ${challenge}`
+  );
+});
+
 // ========== QUIZ SİSTEMİ ==========
 // Upstash Redis ile kalıcı skor + tarkov.dev API ile dinamik sorular
 
