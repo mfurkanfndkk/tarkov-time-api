@@ -189,6 +189,47 @@ app.get('/api/event', async (req, res) => {
   }
 });
 
+// ========== BOT ROAST ==========
+
+const BOT_ROASTS = [
+  'İtiraf ediyorum... Ben aslında bot değilim, sadece bu kadar kötüyüm.',
+  'Aim assist açık ama yine de vuramıyorum, sorun bende.',
+  'Dün gece Scav\'a bile kaybettim ama kimseye söylemeyin.',
+  'Mouse\'umu ters tutuyordum 3 aydır, yeni fark ettim.',
+  'Aslında haritayı hala ezberleyemedim, telefondna bakıyorum.',
+  'Reshala beni görünce acıyıp ateş etmiyor.',
+  'Factory\'de 20 dakika saklandım ve 0 kill ile extract yaptım, buna da şükür.',
+  'Ayarlarım 800 DPI ama parmaklarım kontrolü reddediyor.',
+  'Gece raid\'e giriyorum ki kimse oynadığımı görmesin.',
+  'Stash\'im var ama içinde sadece gözyaşı var.',
+  'Dün 5 saat oynadım, toplam kazancım -2 milyon ruble.',
+  'Scav karma\'m o kadar düşük ki Fence beni engelledi.',
+  'Kendi takım arkadaşımı vurdum ama "desync" dedim.',
+  'PMC seviyem 40 ama skill seviyem -40.',
+  'Customs Dorms\'a girince kalp atışım 200\'e çıkıyor, gerçek hayatta.',
+  'Helikopter extract\'ını 7 kez kaçırdım çünkü sesi duyunca kaçtım.',
+  'Flea Market\'te yanlış fiyata satıp 3 milyon kaybettim, ağladım.',
+  'GPU buldum ama sevindim heyecandan yanlış tuşa bastım, düşürdüm.',
+  'Labs keycard aldım, girdim, 14 saniyede öldüm.',
+  'Tarkov\'da 2000 saat var ama hala grenadeı yanlış yere atıyorum.',
+  'Her raid\'de en az 1 kere kendi flashbang\'imle kendimi kör ediyorum.',
+  'Arkadaşlarım benle oynamak istemiyor, "solo oyna" diyorlar.',
+  'İnternet kafede Tarkov oynarken herkes ekranıma bakıp gülüyor.',
+  'Benim en iyi raid\'im, hiçbir şey yapmadan extract yaptığım raid.',
+  'Silahıma mermi koymayı unutuyorum, 50. kez.',
+  'Cheater sandılar, rapor ettiler, sonra izlediler "yok bu bot" dediler.',
+  'Annem bile "oğlum sen bu oyunu bırak" dedi.',
+  'Rat oynamak istiyorum ama ratlar bile benden iyi.',
+  'Oyundaki AI botlar benden daha iyi oynuyor, ciddiyim.',
+  'Yükleme ekranındayken bile stres yapıyorum.',
+];
+
+app.get('/api/bot', (req, res) => {
+  const user = req.query.user || 'aFaTSuMNiDyA';
+  const roast = BOT_ROASTS[Math.floor(Math.random() * BOT_ROASTS.length)];
+  res.type('text/plain').send(`🤖 ${user}: "${roast}"`);
+});
+
 // ========== LOADOUT CHALLENGE ==========
 
 const LOADOUT_WEAPONS = [
