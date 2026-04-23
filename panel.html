@@ -28,9 +28,9 @@
     .ti { display: flex; align-items: center; gap: 12px; background: #1a1a2e; padding: 14px 16px; border-radius: 8px; border-left: 3px solid #00d4ff; }
     .ti.off { opacity: 0.5; border-left-color: #555; }
     .tm { flex: 1; font-size: 14px; word-break: break-word; }
-    .tinf { color: #888; font-size: 12px; white-space: nowrap; cursor: pointer; }
-    .tinf:hover { color: #00d4ff; }
-    .tinf input { width: 50px; padding: 2px 6px; background: #0a0a0f; border: 1px solid #00d4ff; border-radius: 4px; color: #fff; font-size: 12px; text-align: center; }
+    .tinf { background: #252535; color: #00d4ff; font-size: 12px; white-space: nowrap; cursor: pointer; padding: 6px 10px; border-radius: 6px; border: 1px solid #333; transition: all 0.2s; user-select: none; }
+    .tinf:hover { border-color: #00d4ff; background: #1a1a3a; }
+    .tinf input { width: 50px; padding: 4px 6px; background: #0a0a0f; border: 1px solid #00d4ff; border-radius: 4px; color: #fff; font-size: 12px; text-align: center; }
     .ta { display: flex; gap: 6px; }
     .empty { text-align: center; color: #666; padding: 30px; }
   </style>
@@ -74,7 +74,7 @@
       list.innerHTML = timers.map(function(t) {
         return '<div class="ti ' + (t.enabled ? '' : 'off') + '">'
           + '<div class="tm">' + t.message + '</div>'
-          + '<span class="tinf" onclick="editInterval(\'' + t.id + '\',' + t.interval + ',this)" title="Tıkla değiştir">' + t.interval + ' dk</span>'
+          + '<span class="tinf" onclick="editInterval(\'' + t.id + '\',' + t.interval + ',this)" title="Tıkla değiştir">⏱ ' + t.interval + ' dk</span>'
           + '<div class="ta">'
           + '<button class="btn bt ' + (t.enabled ? 'bon' : 'boff') + '" onclick="toggleTimer(\'' + t.id + '\',' + !t.enabled + ')">' + (t.enabled ? 'ON' : 'OFF') + '</button>'
           + '<button class="btn bd" onclick="deleteTimer(\'' + t.id + '\')">Sil</button>'
