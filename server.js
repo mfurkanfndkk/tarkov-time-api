@@ -883,13 +883,17 @@ async function sendKickMessage(content) {
 
 // === OAuth Endpoints ===
 
-// 1. Kick OAuth başlat
+// Aktif OAuth state takibi
+let activeAuthRole = 'bot'; // 'bot' veya 'broadcaster'
+
+// 1a. Bot OAuth (OMbot hesabı ile)
 app.get('/auth/kick', (req, res) => {
+  activeAuthRole = 'bot';
   codeVerifier = generateCodeVerifier();
   const codeChallenge = generateCodeChallenge(codeVerifier);
   const state = crypto.randomBytes(16).toString('hex');
   
-  const scopes = 'user:read channel:read chat:write events:subscribe moderation:manage channel:rewards:write channel:rewards:read';
+  const scopes = 'user:read channel:read chat:write events:subscribe moderation:manage';
   
   const url = `https://id.kick.com/oauth/authorize?` +
     `response_type=code&` +
@@ -903,7 +907,28 @@ app.get('/auth/kick', (req, res) => {
   res.redirect(url);
 });
 
-// 2. OAuth callback
+// 1b. Broadcaster OAuth (senin hesabın ile — kanal ödülleri için)
+app.get('/auth/broadcaster', (req, res) => {
+  activeAuthRole = 'broadcaster';
+  codeVerifier = generateCodeVerifier();
+  const codeChallenge = generateCodeChallenge(codeVerifier);
+  const state = crypto.randomBytes(16).toString('hex');
+  
+  const scopes = 'user:read channel:read channel:rewards:write channel:rewards:read events:subscribe';
+  
+  const url = `https://id.kick.com/oauth/authorize?` +
+    `response_type=code&` +
+    `client_id=${KICK_CLIENT_ID}&` +
+    `redirect_uri=${encodeURIComponent(KICK_REDIRECT_URI)}&` +
+    `scope=${encodeURIComponent(scopes)}&` +
+    `code_challenge=${codeChallenge}&` +
+    `code_challenge_method=S256&` +
+    `state=${state}`;
+  
+  res.redirect(url);
+});
+
+// 2. OAuth callback (hem bot hem broadcaster için)
 app.get('/auth/callback', async (req, res) => {
   const { code, error } = req.query;
   
@@ -933,12 +958,26 @@ app.get('/auth/callback', async (req, res) => {
     }
     
     const tokens = await tokenRes.json();
-    await saveKickTokens(tokens);
     
-    // Webhook aboneliği kur
-    await setupWebhookSubscription(tokens.access_token);
-    
-    res.type('text/plain').send('✅ Kick Bot yetkilendirildi! Webhook kuruldu. Bot artık aktif!');
+    if (activeAuthRole === 'broadcaster') {
+      // Broadcaster token'ı ayrı kaydet
+      await redis(['SET', 'kick:broadcaster_token', tokens.access_token]);
+      await redis(['SET', 'kick:broadcaster_refresh', tokens.refresh_token || '']);
+      await redis(['SET', 'kick:broadcaster_expires', String(Date.now() + (tokens.expires_in * 1000))]);
+      
+      // Webhook aboneliği kur (broadcaster token ile)
+      await setupWebhookSubscription(tokens.access_token);
+      
+      res.type('text/plain').send('✅ Broadcaster yetkilendirildi! Kanal ödülleri artık aktif!');
+    } else {
+      // Bot token'ı kaydet
+      await saveKickTokens(tokens);
+      
+      // Webhook aboneliği kur
+      await setupWebhookSubscription(tokens.access_token);
+      
+      res.type('text/plain').send('✅ Bot yetkilendirildi! Chat komutları aktif!');
+    }
   } catch (err) {
     res.type('text/plain').send(`❌ Hata: ${err.message}`);
   }
@@ -1206,11 +1245,11 @@ app.get('/webhook/logs', (req, res) => {
   res.json({ count: webhookLogs.length, logs: webhookLogs });
 });
 
-// Kanal ödülü oluştur
+// Kanal ödülü oluştur (broadcaster token gerekli!)
 app.get('/bot/setup-rewards', async (req, res) => {
   try {
-    const token = await getKickAccessToken();
-    if (!token) return res.json({ error: 'Token yok, önce /auth/kick ile yetkilendir' });
+    const token = await redis(['GET', 'kick:broadcaster_token']);
+    if (!token) return res.json({ error: 'Broadcaster token yok! Önce /auth/broadcaster ile kendi hesabınla yetkilendir.' });
     
     const cost = parseInt(req.query.cost) || 500;
     
