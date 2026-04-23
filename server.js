@@ -1424,17 +1424,12 @@ app.get('/panel/:slug', async (req, res) => {
   const { slug } = req.params;
   const { key } = req.query;
   if (!await verifyPanel(slug, key)) return res.status(403).send('<h1 style="color:red;font-family:sans-serif;text-align:center;margin-top:100px">Yetkisiz Erisim</h1>');
-  res.send(\`<!DOCTYPE html><html lang="tr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>OMbot - \${slug}</title>
-<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',sans-serif;background:#0a0a0f;color:#e0e0e0;min-height:100vh}.header{background:linear-gradient(135deg,#1a1a2e,#16213e);padding:20px 30px;border-bottom:2px solid #00d4ff33;display:flex;align-items:center;gap:15px}.header h1{font-size:24px;color:#00d4ff}.header .ch{background:#00d4ff22;color:#00d4ff;padding:4px 12px;border-radius:6px;font-size:14px}.container{max-width:800px;margin:30px auto;padding:0 20px}.card{background:#12121a;border:1px solid #2a2a3a;border-radius:12px;padding:24px;margin-bottom:20px}.card h2{color:#00d4ff;margin-bottom:16px;font-size:18px}.fr{display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap}.fr input{flex:1;min-width:150px;padding:10px 14px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;font-size:14px}.fr input:focus{border-color:#00d4ff;outline:none}.btn{padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;transition:all .2s}.bp{background:#00d4ff;color:#000}.bp:hover{background:#00b8d4;transform:translateY(-1px)}.bd{background:#ff4444;color:#fff;font-size:12px;padding:6px 12px}.bd:hover{background:#cc3333}.bt{font-size:12px;padding:6px 12px}.bon{background:#00c853;color:#000}.boff{background:#555;color:#ccc}.tl{display:flex;flex-direction:column;gap:10px}.ti{display:flex;align-items:center;gap:12px;background:#1a1a2e;padding:14px 16px;border-radius:8px;border-left:3px solid #00d4ff}.ti.off{opacity:.5;border-left-color:#555}.tm{flex:1;font-size:14px;word-break:break-word}.tinf{color:#888;font-size:12px;white-space:nowrap}.ta{display:flex;gap:6px}.empty{text-align:center;color:#666;padding:30px}</style></head>
-<body><div class="header"><h1>🤖 OMbot Panel</h1><span class="ch">\${slug}</span></div>
-<div class="container"><div class="card"><h2>➕ Yeni Zamanlı Mesaj</h2><div class="fr"><input type="text" id="msg" placeholder="Mesaj metni..."></div><div class="fr"><input type="number" id="iv" placeholder="Dakika" min="1" value="10" style="max-width:120px"><button class="btn bp" onclick="add()">Ekle</button></div></div>
-<div class="card"><h2>📋 Zamanlı Mesajlar</h2><div id="list" class="tl"><div class="empty">Yükleniyor...</div></div></div></div>
-<script>const S='\${slug}',K='\${key}',A='/api/timers/'+S+'?key='+K;
-async function load(){const r=await fetch(A);const d=await r.json();const l=document.getElementById('list');if(!d.length){l.innerHTML='<div class="empty">Henüz zamanlı mesaj yok.</div>';return}l.innerHTML=d.map(t=>'<div class="ti '+(t.enabled?'':'off')+'"><div class="tm">'+t.message+'</div><span class="tinf">'+t.interval+' dk</span><div class="ta"><button class="btn bt '+(t.enabled?'bon':'boff')+'" onclick="tog(\\''+t.id+'\\','+!t.enabled+')">'+(t.enabled?'ON':'OFF')+'</button><button class="btn bd" onclick="del(\\''+t.id+'\\')">Sil</button></div></div>').join('')}
-async function add(){const m=document.getElementById('msg').value.trim();const i=document.getElementById('iv').value;if(!m)return alert('Mesaj boş!');await fetch(A,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:m,interval:i})});document.getElementById('msg').value='';load()}
-async function del(id){if(!confirm('Silmek istediğine emin misin?'))return;await fetch('/api/timers/'+S+'/'+id+'?key='+K,{method:'DELETE'});load()}
-async function tog(id,e){await fetch('/api/timers/'+S+'/'+id+'?key='+K,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:e})});load()}
-load()</script></body></html>\`);
+  
+  const fs = require('fs');
+  const path = require('path');
+  let html = fs.readFileSync(path.join(__dirname, 'panel.html'), 'utf8');
+  html = html.replace(/\{\{SLUG\}\}/g, slug).replace(/\{\{KEY\}\}/g, key);
+  res.send(html);
 });
 
 // Health check
