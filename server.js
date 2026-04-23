@@ -962,18 +962,39 @@ function checkCooldown(user, cmd, seconds) {
   return true;
 }
 
+// Son webhook logları (debug için)
+const webhookLogs = [];
+
 app.post('/webhook/kick', async (req, res) => {
   // Kick'e hemen 200 dön
   res.status(200).send('OK');
   
   try {
-    const event = req.body;
+    const eventType = req.headers['kick-event-type'] || 'unknown';
+    const body = req.body;
     
-    // chat.message.sent event payload
-    const messageData = event?.data || event;
-    const content = messageData?.content || messageData?.message?.content || '';
-    const sender = messageData?.sender?.username || messageData?.user?.username || 'bilinmeyen';
-    const senderId = messageData?.sender?.user_id || messageData?.user?.id || 0;
+    // Debug log
+    const logEntry = {
+      time: new Date().toISOString(),
+      eventType,
+      headers: {
+        'kick-event-type': req.headers['kick-event-type'],
+        'kick-event-version': req.headers['kick-event-version'],
+        'kick-event-message-id': req.headers['kick-event-message-id'],
+      },
+      body: JSON.stringify(body).substring(0, 500)
+    };
+    webhookLogs.unshift(logEntry);
+    if (webhookLogs.length > 20) webhookLogs.pop();
+    console.log('[WEBHOOK]', JSON.stringify(logEntry));
+    
+    // Sadece chat mesajlarını işle
+    if (eventType !== 'chat.message.sent') return;
+    
+    // Resmi payload: { message_id, content, sender: { username, user_id }, broadcaster: {...} }
+    const content = body?.content || '';
+    const sender = body?.sender?.username || 'bilinmeyen';
+    const senderId = body?.sender?.user_id || 0;
     
     // Komut mu kontrol et
     if (!content.startsWith('!')) return;
@@ -1102,6 +1123,11 @@ app.post('/webhook/kick', async (req, res) => {
   } catch (err) {
     console.error('Webhook handler hatası:', err.message);
   }
+});
+
+// Webhook log debug
+app.get('/webhook/logs', (req, res) => {
+  res.json({ count: webhookLogs.length, logs: webhookLogs });
 });
 
 // Bot durumu
