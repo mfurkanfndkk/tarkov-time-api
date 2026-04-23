@@ -996,6 +996,9 @@ app.post('/webhook/kick', async (req, res) => {
     const sender = body?.sender?.username || 'bilinmeyen';
     const senderId = body?.sender?.user_id || 0;
     
+    // Bot kendi mesajlarını yoksay (sonsuz döngü önleme)
+    if (sender === 'OMbot' || senderId === 100063968) return;
+    
     // Komut mu kontrol et
     if (!content.startsWith('!')) return;
     
@@ -1017,8 +1020,13 @@ app.post('/webhook/kick', async (req, res) => {
       
       case '!goons': {
         if (!checkCooldown(sender, 'goons', 10)) return;
-        const goonMsg = await getGoonLocation();
-        await sendKickMessage(goonMsg);
+        try {
+          const goonMsg = await getGoonLocation();
+          await sendKickMessage(goonMsg);
+        } catch (err) {
+          console.error('Goons hatası:', err.message);
+          await sendKickMessage('❌ Goon bilgisi alınamadı, site yanıt vermiyor.');
+        }
         break;
       }
       
