@@ -1204,19 +1204,6 @@ app.post('/webhook/kick', async (req, res) => {
         break;
       }
       
-      case '!loadout': {
-        if (!checkCooldown(sender, 'loadout', 10)) return;
-        const weapon = pick(LOADOUT_WEAPONS);
-        const armor = pick(LOADOUT_ARMOR);
-        const backpack = pick(LOADOUT_BACKPACKS);
-        const map = pick(LOADOUT_MAPS);
-        const challenge = pick(LOADOUT_CHALLENGES);
-        const tierBudget = { ucuz: '50-100K₽', orta: '150-250K₽', pahalı: '300-500K₽', troll: '???₽' };
-        const budget = tierBudget[weapon.tier] || '100-200K₽';
-        await sendKickMessage(`🎲 LOADOUT → ${weapon.name} | ${armor.name} | ${backpack} | ${map} | ${budget} | 🔥 ${challenge}`, channelId);
-        break;
-      }
-      
       case '!bahane': {
         if (!checkCooldown(sender, 'bahane', 5)) return;
         const p2 = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -1237,6 +1224,12 @@ app.post('/webhook/kick', async (req, res) => {
         if (!checkCooldown(sender, 'bot', 5)) return;
         const roast = BOT_ROASTS[Math.floor(Math.random() * BOT_ROASTS.length)];
         await sendKickMessage(`🤖 aFaTSuMNiDyA: "${roast}"`, channelId);
+        break;
+      }
+      
+      case '!komutlar': {
+        if (!checkCooldown(sender, 'komutlar', 10)) return;
+        await sendKickMessage(`📋 Komutlar → !tarkovsaat | !goons | !etkinlik | !quiz | !c <cevap> | !skor | !bahane | !bot | 🎲 Loadout = Sadakat Puanı`, channelId);
         break;
       }
       
