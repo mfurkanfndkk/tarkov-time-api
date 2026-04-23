@@ -1321,54 +1321,6 @@ app.get('/bot/status', async (req, res) => {
 
 // ========== ZAMANLI MESAJ SİSTEMİ ==========
 
-// Zamanlı mesaj API'leri
-app.get('/api/timers', async (req, res) => {
-  const data = await redis(['GET', 'bot:timers']);
-  res.json(data ? JSON.parse(data) : []);
-});
-
-app.post('/api/timers', express.json(), async (req, res) => {
-  const { message, interval, channelId, enabled } = req.body;
-  if (!message || !interval) return res.status(400).json({ error: 'message ve interval gerekli' });
-  
-  const data = await redis(['GET', 'bot:timers']);
-  const timers = data ? JSON.parse(data) : [];
-  
-  timers.push({
-    id: Date.now().toString(),
-    message,
-    interval: parseInt(interval), // dakika
-    channelId: parseInt(channelId) || ALL_BROADCASTER_IDS[0],
-    enabled: enabled !== false,
-    lastSent: 0
-  });
-  
-  await redis(['SET', 'bot:timers', JSON.stringify(timers)]);
-  res.json({ success: true, timers });
-});
-
-app.delete('/api/timers/:id', async (req, res) => {
-  const data = await redis(['GET', 'bot:timers']);
-  let timers = data ? JSON.parse(data) : [];
-  timers = timers.filter(t => t.id !== req.params.id);
-  await redis(['SET', 'bot:timers', JSON.stringify(timers)]);
-  res.json({ success: true, timers });
-});
-
-app.patch('/api/timers/:id', express.json(), async (req, res) => {
-  const data = await redis(['GET', 'bot:timers']);
-  let timers = data ? JSON.parse(data) : [];
-  const timer = timers.find(t => t.id === req.params.id);
-  if (!timer) return res.status(404).json({ error: 'Timer bulunamadı' });
-  
-  if (req.body.enabled !== undefined) timer.enabled = req.body.enabled;
-  if (req.body.message) timer.message = req.body.message;
-  if (req.body.interval) timer.interval = parseInt(req.body.interval);
-  
-  await redis(['SET', 'bot:timers', JSON.stringify(timers)]);
-  res.json({ success: true, timers });
-});
-
 // Zamanlı mesaj döngüsü (30 saniyede bir kontrol)
 setInterval(async () => {
   try {
@@ -1398,178 +1350,91 @@ setInterval(async () => {
   }
 }, 30000);
 
-// ========== YAYINCI PANELİ ==========
-app.get('/panel', (req, res) => {
-  res.send(`<!DOCTYPE html>
-<html lang="tr">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OMbot Panel</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { 
-      font-family: 'Segoe UI', sans-serif; 
-      background: #0a0a0f; 
-      color: #e0e0e0; 
-      min-height: 100vh;
-    }
-    .header {
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-      padding: 20px 30px;
-      border-bottom: 2px solid #00d4ff33;
-      display: flex; align-items: center; gap: 15px;
-    }
-    .header h1 { font-size: 24px; color: #00d4ff; }
-    .header span { color: #888; font-size: 14px; }
-    .container { max-width: 800px; margin: 30px auto; padding: 0 20px; }
-    
-    .card {
-      background: #12121a;
-      border: 1px solid #2a2a3a;
-      border-radius: 12px;
-      padding: 24px;
-      margin-bottom: 20px;
-    }
-    .card h2 { color: #00d4ff; margin-bottom: 16px; font-size: 18px; }
-    
-    .form-row { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
-    .form-row input, .form-row select {
-      flex: 1; min-width: 150px;
-      padding: 10px 14px;
-      background: #1a1a2e;
-      border: 1px solid #333;
-      border-radius: 8px;
-      color: #fff;
-      font-size: 14px;
-    }
-    .form-row input:focus, .form-row select:focus { border-color: #00d4ff; outline: none; }
-    
-    .btn {
-      padding: 10px 20px;
-      border: none; border-radius: 8px;
-      cursor: pointer; font-size: 14px; font-weight: 600;
-      transition: all 0.2s;
-    }
-    .btn-primary { background: #00d4ff; color: #000; }
-    .btn-primary:hover { background: #00b8d4; transform: translateY(-1px); }
-    .btn-danger { background: #ff4444; color: #fff; font-size: 12px; padding: 6px 12px; }
-    .btn-danger:hover { background: #cc3333; }
-    .btn-toggle { font-size: 12px; padding: 6px 12px; }
-    .btn-on { background: #00c853; color: #000; }
-    .btn-off { background: #555; color: #ccc; }
-    
-    .timer-list { display: flex; flex-direction: column; gap: 10px; }
-    .timer-item {
-      display: flex; align-items: center; gap: 12px;
-      background: #1a1a2e;
-      padding: 14px 16px;
-      border-radius: 8px;
-      border-left: 3px solid #00d4ff;
-    }
-    .timer-item.disabled { opacity: 0.5; border-left-color: #555; }
-    .timer-msg { flex: 1; font-size: 14px; word-break: break-word; }
-    .timer-info { color: #888; font-size: 12px; white-space: nowrap; }
-    .timer-actions { display: flex; gap: 6px; }
-    
-    .empty { text-align: center; color: #666; padding: 30px; }
-    .channel-tag {
-      font-size: 11px; padding: 2px 8px;
-      background: #2a2a3a; border-radius: 4px; color: #aaa;
-    }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <h1>🤖 OMbot Panel</h1>
-    <span>Zamanlı Mesaj Yönetimi</span>
-  </div>
-  
-  <div class="container">
-    <div class="card">
-      <h2>➕ Yeni Zamanlı Mesaj</h2>
-      <div class="form-row">
-        <input type="text" id="msg" placeholder="Mesaj metni..." />
-      </div>
-      <div class="form-row">
-        <input type="number" id="interval" placeholder="Dakika (ör: 10)" min="1" value="10" />
-        <select id="channel">
-          ${Object.entries(CHANNELS).map(([id, ch]) => `<option value="${id}">${ch.slug}</option>`).join('')}
-        </select>
-        <button class="btn btn-primary" onclick="addTimer()">Ekle</button>
-      </div>
-    </div>
-    
-    <div class="card">
-      <h2>📋 Aktif Zamanlı Mesajlar</h2>
-      <div id="timerList" class="timer-list">
-        <div class="empty">Yükleniyor...</div>
-      </div>
-    </div>
-  </div>
+// ========== YAYINCI PANELİ (Kanal Bazlı) ==========
 
-  <script>
-    const CHANNELS = ${JSON.stringify(CHANNELS)};
-    
-    async function loadTimers() {
-      const res = await fetch('/api/timers');
-      const timers = await res.json();
-      const list = document.getElementById('timerList');
-      
-      if (timers.length === 0) {
-        list.innerHTML = '<div class="empty">Henüz zamanlı mesaj yok. Yukarıdan ekle!</div>';
-        return;
-      }
-      
-      list.innerHTML = timers.map(t => {
-        const ch = CHANNELS[t.channelId]?.slug || 'bilinmeyen';
-        return \`<div class="timer-item \${t.enabled ? '' : 'disabled'}">
-          <div class="timer-msg">\${t.message}</div>
-          <span class="channel-tag">\${ch}</span>
-          <span class="timer-info">\${t.interval} dk</span>
-          <div class="timer-actions">
-            <button class="btn btn-toggle \${t.enabled ? 'btn-on' : 'btn-off'}" 
-              onclick="toggleTimer('\${t.id}', \${!t.enabled})">\${t.enabled ? 'ON' : 'OFF'}</button>
-            <button class="btn btn-danger" onclick="deleteTimer('\${t.id}')">Sil</button>
-          </div>
-        </div>\`;
-      }).join('');
+// Panel key oluştur
+app.get('/panel/setup-keys', async (req, res) => {
+  const keys = {};
+  for (const [id, ch] of Object.entries(CHANNELS)) {
+    let key = await redis(['GET', 'panel:key:' + id]);
+    if (!key) {
+      key = crypto.randomBytes(16).toString('hex');
+      await redis(['SET', 'panel:key:' + id, key]);
     }
-    
-    async function addTimer() {
-      const message = document.getElementById('msg').value.trim();
-      const interval = document.getElementById('interval').value;
-      const channelId = document.getElementById('channel').value;
-      if (!message) return alert('Mesaj boş olamaz!');
-      
-      await fetch('/api/timers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, interval, channelId })
-      });
-      document.getElementById('msg').value = '';
-      loadTimers();
-    }
-    
-    async function deleteTimer(id) {
-      if (!confirm('Bu mesajı silmek istediğine emin misin?')) return;
-      await fetch('/api/timers/' + id, { method: 'DELETE' });
-      loadTimers();
-    }
-    
-    async function toggleTimer(id, enabled) {
-      await fetch('/api/timers/' + id, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled })
-      });
-      loadTimers();
-    }
-    
-    loadTimers();
-  </script>
-</body>
-</html>`);
+    keys[ch.slug] = '/panel/' + ch.slug + '?key=' + key;
+  }
+  res.json(keys);
+});
+
+// Key doğrulama
+async function verifyPanel(slug, key) {
+  const ch = Object.entries(CHANNELS).find(([_, c]) => c.slug === slug);
+  if (!ch) return null;
+  const stored = await redis(['GET', 'panel:key:' + ch[0]]);
+  return (stored && stored === key) ? parseInt(ch[0]) : null;
+}
+
+// Kanal bazlı timer API
+app.get('/api/timers/:slug', async (req, res) => {
+  const cid = await verifyPanel(req.params.slug, req.query.key);
+  if (!cid) return res.status(403).json({ error: 'Yetkisiz' });
+  const data = await redis(['GET', 'bot:timers']);
+  const all = data ? JSON.parse(data) : [];
+  res.json(all.filter(t => t.channelId === cid));
+});
+
+app.post('/api/timers/:slug', async (req, res) => {
+  const cid = await verifyPanel(req.params.slug, req.query.key);
+  if (!cid) return res.status(403).json({ error: 'Yetkisiz' });
+  const { message, interval } = req.body;
+  if (!message || !interval) return res.status(400).json({ error: 'Eksik alan' });
+  const data = await redis(['GET', 'bot:timers']);
+  const timers = data ? JSON.parse(data) : [];
+  timers.push({ id: Date.now().toString(), message, interval: parseInt(interval), channelId: cid, enabled: true, lastSent: 0 });
+  await redis(['SET', 'bot:timers', JSON.stringify(timers)]);
+  res.json({ success: true });
+});
+
+app.delete('/api/timers/:slug/:id', async (req, res) => {
+  const cid = await verifyPanel(req.params.slug, req.query.key);
+  if (!cid) return res.status(403).json({ error: 'Yetkisiz' });
+  const data = await redis(['GET', 'bot:timers']);
+  let timers = data ? JSON.parse(data) : [];
+  timers = timers.filter(t => !(t.id === req.params.id && t.channelId === cid));
+  await redis(['SET', 'bot:timers', JSON.stringify(timers)]);
+  res.json({ success: true });
+});
+
+app.patch('/api/timers/:slug/:id', async (req, res) => {
+  const cid = await verifyPanel(req.params.slug, req.query.key);
+  if (!cid) return res.status(403).json({ error: 'Yetkisiz' });
+  const data = await redis(['GET', 'bot:timers']);
+  let timers = data ? JSON.parse(data) : [];
+  const t = timers.find(t => t.id === req.params.id && t.channelId === cid);
+  if (!t) return res.status(404).json({ error: 'Bulunamadı' });
+  if (req.body.enabled !== undefined) t.enabled = req.body.enabled;
+  if (req.body.message) t.message = req.body.message;
+  if (req.body.interval) t.interval = parseInt(req.body.interval);
+  await redis(['SET', 'bot:timers', JSON.stringify(timers)]);
+  res.json({ success: true });
+});
+
+// Panel HTML
+app.get('/panel/:slug', async (req, res) => {
+  const { slug } = req.params;
+  const { key } = req.query;
+  if (!await verifyPanel(slug, key)) return res.status(403).send('<h1 style="color:red;font-family:sans-serif;text-align:center;margin-top:100px">Yetkisiz Erisim</h1>');
+  res.send(\`<!DOCTYPE html><html lang="tr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>OMbot - \${slug}</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',sans-serif;background:#0a0a0f;color:#e0e0e0;min-height:100vh}.header{background:linear-gradient(135deg,#1a1a2e,#16213e);padding:20px 30px;border-bottom:2px solid #00d4ff33;display:flex;align-items:center;gap:15px}.header h1{font-size:24px;color:#00d4ff}.header .ch{background:#00d4ff22;color:#00d4ff;padding:4px 12px;border-radius:6px;font-size:14px}.container{max-width:800px;margin:30px auto;padding:0 20px}.card{background:#12121a;border:1px solid #2a2a3a;border-radius:12px;padding:24px;margin-bottom:20px}.card h2{color:#00d4ff;margin-bottom:16px;font-size:18px}.fr{display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap}.fr input{flex:1;min-width:150px;padding:10px 14px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;font-size:14px}.fr input:focus{border-color:#00d4ff;outline:none}.btn{padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;transition:all .2s}.bp{background:#00d4ff;color:#000}.bp:hover{background:#00b8d4;transform:translateY(-1px)}.bd{background:#ff4444;color:#fff;font-size:12px;padding:6px 12px}.bd:hover{background:#cc3333}.bt{font-size:12px;padding:6px 12px}.bon{background:#00c853;color:#000}.boff{background:#555;color:#ccc}.tl{display:flex;flex-direction:column;gap:10px}.ti{display:flex;align-items:center;gap:12px;background:#1a1a2e;padding:14px 16px;border-radius:8px;border-left:3px solid #00d4ff}.ti.off{opacity:.5;border-left-color:#555}.tm{flex:1;font-size:14px;word-break:break-word}.tinf{color:#888;font-size:12px;white-space:nowrap}.ta{display:flex;gap:6px}.empty{text-align:center;color:#666;padding:30px}</style></head>
+<body><div class="header"><h1>🤖 OMbot Panel</h1><span class="ch">\${slug}</span></div>
+<div class="container"><div class="card"><h2>➕ Yeni Zamanlı Mesaj</h2><div class="fr"><input type="text" id="msg" placeholder="Mesaj metni..."></div><div class="fr"><input type="number" id="iv" placeholder="Dakika" min="1" value="10" style="max-width:120px"><button class="btn bp" onclick="add()">Ekle</button></div></div>
+<div class="card"><h2>📋 Zamanlı Mesajlar</h2><div id="list" class="tl"><div class="empty">Yükleniyor...</div></div></div></div>
+<script>const S='\${slug}',K='\${key}',A='/api/timers/'+S+'?key='+K;
+async function load(){const r=await fetch(A);const d=await r.json();const l=document.getElementById('list');if(!d.length){l.innerHTML='<div class="empty">Henüz zamanlı mesaj yok.</div>';return}l.innerHTML=d.map(t=>'<div class="ti '+(t.enabled?'':'off')+'"><div class="tm">'+t.message+'</div><span class="tinf">'+t.interval+' dk</span><div class="ta"><button class="btn bt '+(t.enabled?'bon':'boff')+'" onclick="tog(\\''+t.id+'\\','+!t.enabled+')">'+(t.enabled?'ON':'OFF')+'</button><button class="btn bd" onclick="del(\\''+t.id+'\\')">Sil</button></div></div>').join('')}
+async function add(){const m=document.getElementById('msg').value.trim();const i=document.getElementById('iv').value;if(!m)return alert('Mesaj boş!');await fetch(A,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:m,interval:i})});document.getElementById('msg').value='';load()}
+async function del(id){if(!confirm('Silmek istediğine emin misin?'))return;await fetch('/api/timers/'+S+'/'+id+'?key='+K,{method:'DELETE'});load()}
+async function tog(id,e){await fetch('/api/timers/'+S+'/'+id+'?key='+K,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:e})});load()}
+load()</script></body></html>\`);
 });
 
 // Health check
