@@ -847,7 +847,7 @@ async function sendKickMessage(content) {
       body: JSON.stringify({
         broadcaster_user_id: KICK_BROADCASTER_ID,
         content: content,
-        type: 'bot'
+        type: 'user'
       })
     });
     
@@ -1128,6 +1128,32 @@ app.post('/webhook/kick', async (req, res) => {
 // Webhook log debug
 app.get('/webhook/logs', (req, res) => {
   res.json({ count: webhookLogs.length, logs: webhookLogs });
+});
+
+// Test mesaj gönder
+app.get('/bot/test', async (req, res) => {
+  try {
+    const token = await getKickAccessToken();
+    if (!token) return res.json({ error: 'Token yok' });
+    
+    const kickRes = await fetch('https://api.kick.com/public/v1/chat', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        broadcaster_user_id: KICK_BROADCASTER_ID,
+        content: '🤖 FurkanBot test mesajı!',
+        type: 'user'
+      })
+    });
+    
+    const data = await kickRes.text();
+    res.json({ status: kickRes.status, response: data });
+  } catch (err) {
+    res.json({ error: err.message });
+  }
 });
 
 // Bot durumu
