@@ -1,10 +1,19 @@
 const express = require('express');
 const cors = require('cors');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
+app.use(express.json()); // Webhook POST body için
+
+// ========== KICK BOT CONFIG ==========
+const KICK_CLIENT_ID = process.env.KICK_CLIENT_ID || '01KPVXW5GWMP71138FF945DWN1';
+const KICK_CLIENT_SECRET = process.env.KICK_CLIENT_SECRET || 'fd09d3572d7022e2b6d0b9d849aa8c373c2e509b8508655ab13f5121c9b814ca';
+const KICK_REDIRECT_URI = process.env.KICK_REDIRECT_URI || 'https://tarkov-time-api.onrender.com/auth/callback';
+const KICK_BROADCASTER_ID = 24615034;
+const KICK_CHANNEL_SLUG = 'mfurkan-fndk';
 
 // ========== TARKOV TIME HESAPLAMA ==========
 // Tarkov'da zaman gerçek zamanın 7 katı hızda ilerler
@@ -753,6 +762,363 @@ app.get('/api/quiz/reset', async (req, res) => {
   }
 });
 
+// ========== KICK BOT - OAuth & Webhook ==========
+
+// PKCE yardımcıları
+let codeVerifier = '';
+
+function generateCodeVerifier() {
+  return crypto.randomBytes(32).toString('base64url');
+}
+
+function generateCodeChallenge(verifier) {
+  return crypto.createHash('sha256').update(verifier).digest('base64url');
+}
+
+// Token'ları Redis'te sakla
+async function saveKickTokens(tokens) {
+  await redis(['SET', 'kick:access_token', tokens.access_token]);
+  await redis(['SET', 'kick:refresh_token', tokens.refresh_token || '']);
+  await redis(['SET', 'kick:token_expires', String(Date.now() + (tokens.expires_in * 1000))]);
+  console.log('Kick token kaydedildi!');
+}
+
+async function getKickAccessToken() {
+  const token = await redis(['GET', 'kick:access_token']);
+  const expires = await redis(['GET', 'kick:token_expires']);
+  
+  // Token süresi dolmuşsa yenile
+  if (token && expires && Date.now() > parseInt(expires) - 60000) {
+    console.log('Token süresi doldu, yenileniyor...');
+    const refreshed = await refreshKickToken();
+    if (refreshed) return refreshed;
+  }
+  
+  return token;
+}
+
+async function refreshKickToken() {
+  try {
+    const refreshToken = await redis(['GET', 'kick:refresh_token']);
+    if (!refreshToken) return null;
+    
+    const body = new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: KICK_CLIENT_ID,
+      client_secret: KICK_CLIENT_SECRET,
+      refresh_token: refreshToken
+    });
+    
+    const res = await fetch('https://id.kick.com/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString()
+    });
+    
+    if (!res.ok) {
+      console.error('Token yenileme başarısız:', res.status);
+      return null;
+    }
+    
+    const tokens = await res.json();
+    await saveKickTokens(tokens);
+    return tokens.access_token;
+  } catch (err) {
+    console.error('Token refresh hatası:', err.message);
+    return null;
+  }
+}
+
+// Kick API ile mesaj gönder
+async function sendKickMessage(content) {
+  try {
+    const token = await getKickAccessToken();
+    if (!token) {
+      console.error('Kick token yok! /auth/kick adresinden yetkilendir.');
+      return false;
+    }
+    
+    const res = await fetch('https://api.kick.com/public/v1/chat', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        broadcaster_user_id: KICK_BROADCASTER_ID,
+        content: content,
+        type: 'bot'
+      })
+    });
+    
+    if (!res.ok) {
+      const err = await res.text();
+      console.error('Mesaj gönderilemedi:', res.status, err);
+      return false;
+    }
+    
+    return true;
+  } catch (err) {
+    console.error('Kick mesaj hatası:', err.message);
+    return false;
+  }
+}
+
+// === OAuth Endpoints ===
+
+// 1. Kick OAuth başlat
+app.get('/auth/kick', (req, res) => {
+  codeVerifier = generateCodeVerifier();
+  const codeChallenge = generateCodeChallenge(codeVerifier);
+  const state = crypto.randomBytes(16).toString('hex');
+  
+  const scopes = 'user:read channel:read chat:write events:subscribe moderation:manage';
+  
+  const url = `https://id.kick.com/oauth/authorize?` +
+    `response_type=code&` +
+    `client_id=${KICK_CLIENT_ID}&` +
+    `redirect_uri=${encodeURIComponent(KICK_REDIRECT_URI)}&` +
+    `scope=${encodeURIComponent(scopes)}&` +
+    `code_challenge=${codeChallenge}&` +
+    `code_challenge_method=S256&` +
+    `state=${state}`;
+  
+  res.redirect(url);
+});
+
+// 2. OAuth callback
+app.get('/auth/callback', async (req, res) => {
+  const { code, error } = req.query;
+  
+  if (error || !code) {
+    return res.type('text/plain').send(`❌ OAuth hatası: ${error || 'Kod alınamadı'}`);
+  }
+  
+  try {
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: KICK_CLIENT_ID,
+      client_secret: KICK_CLIENT_SECRET,
+      redirect_uri: KICK_REDIRECT_URI,
+      code_verifier: codeVerifier,
+      code: code
+    });
+    
+    const tokenRes = await fetch('https://id.kick.com/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString()
+    });
+    
+    if (!tokenRes.ok) {
+      const err = await tokenRes.text();
+      return res.type('text/plain').send(`❌ Token hatası: ${err}`);
+    }
+    
+    const tokens = await tokenRes.json();
+    await saveKickTokens(tokens);
+    
+    // Webhook aboneliği kur
+    await setupWebhookSubscription(tokens.access_token);
+    
+    res.type('text/plain').send('✅ Kick Bot yetkilendirildi! Webhook kuruldu. Bot artık aktif!');
+  } catch (err) {
+    res.type('text/plain').send(`❌ Hata: ${err.message}`);
+  }
+});
+
+// Webhook aboneliği kur
+async function setupWebhookSubscription(token) {
+  try {
+    const res = await fetch('https://api.kick.com/public/v1/events/subscriptions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        broadcaster_user_id: KICK_BROADCASTER_ID,
+        events: [{ name: 'chat.message.sent', version: 1 }],
+        method: 'webhook'
+      })
+    });
+    
+    const data = await res.json();
+    console.log('Webhook aboneliği:', JSON.stringify(data));
+  } catch (err) {
+    console.error('Webhook abonelik hatası:', err.message);
+  }
+}
+
+// === Webhook Handler ===
+
+// Komut cooldown sistemi
+const commandCooldowns = {};
+function checkCooldown(user, cmd, seconds) {
+  const key = `${user}:${cmd}`;
+  const now = Date.now();
+  if (commandCooldowns[key] && now - commandCooldowns[key] < seconds * 1000) return false;
+  commandCooldowns[key] = now;
+  return true;
+}
+
+app.post('/webhook/kick', async (req, res) => {
+  // Kick'e hemen 200 dön
+  res.status(200).send('OK');
+  
+  try {
+    const event = req.body;
+    
+    // chat.message.sent event payload
+    const messageData = event?.data || event;
+    const content = messageData?.content || messageData?.message?.content || '';
+    const sender = messageData?.sender?.username || messageData?.user?.username || 'bilinmeyen';
+    const senderId = messageData?.sender?.user_id || messageData?.user?.id || 0;
+    
+    // Komut mu kontrol et
+    if (!content.startsWith('!')) return;
+    
+    const parts = content.trim().split(/\s+/);
+    const command = parts[0].toLowerCase();
+    const args = parts.slice(1).join(' ');
+    
+    console.log(`[CMD] ${sender}: ${content}`);
+    
+    // Komut yönlendirme
+    switch (command) {
+      case '!tarkovsaat': {
+        if (!checkCooldown(sender, 'tarkovsaat', 5)) return;
+        const left = getTarkovTime(true);
+        const right = getTarkovTime(false);
+        await sendKickMessage(`🌅 ${left} | 🌙 ${right}`);
+        break;
+      }
+      
+      case '!goons': {
+        if (!checkCooldown(sender, 'goons', 10)) return;
+        const goonMsg = await getGoonLocation();
+        await sendKickMessage(goonMsg);
+        break;
+      }
+      
+      case '!etkinlik': {
+        if (!checkCooldown(sender, 'etkinlik', 15)) return;
+        const eventMsg = await getLatestEvent();
+        await sendKickMessage(eventMsg);
+        break;
+      }
+      
+      case '!quiz': {
+        // Sadece mod/yayıncı (şimdilik herkese açık, sonra kısıtlanır)
+        if (!checkCooldown(sender, 'quiz', 5)) return;
+        const question = await generateQuestion();
+        await redis(['SET', 'quiz:active', JSON.stringify(question)]);
+        await redis(['SET', 'quiz:answered', 'false']);
+        await sendKickMessage(`❓ ${question.q} (💡 İpucu: ${question.hint}) — !c ile cevapla`);
+        break;
+      }
+      
+      case '!c': {
+        if (!args || !checkCooldown(sender, 'c', 3)) return;
+        const activeJson = await redis(['GET', 'quiz:active']);
+        if (!activeJson) {
+          await sendKickMessage(`❌ Aktif soru yok. !quiz yazarak yeni soru al.`);
+          return;
+        }
+        const answered = await redis(['GET', 'quiz:answered']);
+        if (answered === 'true') {
+          await sendKickMessage(`⏰ Bu soru cevaplanmış. !quiz ile yeni soru al.`);
+          return;
+        }
+        const question = JSON.parse(activeJson);
+        if (isCorrectAnswer(args, question.a)) {
+          await redis(['SET', 'quiz:answered', 'true']);
+          await redis(['ZINCRBY', 'quiz:scores', 1, sender]);
+          const score = await redis(['ZSCORE', 'quiz:scores', sender]);
+          await sendKickMessage(`✅ @${sender} doğru bildi! +1 puan (Toplam: ${Math.floor(score)} puan) 🎉`);
+        } else {
+          await sendKickMessage(`❌ @${sender} yanlış! Tekrar dene.`);
+        }
+        break;
+      }
+      
+      case '!skor': {
+        if (!checkCooldown(sender, 'skor', 5)) return;
+        const scores = await redis(['ZREVRANGE', 'quiz:scores', 0, 4, 'WITHSCORES']);
+        if (!scores || scores.length === 0) {
+          await sendKickMessage('🏆 Henüz skor yok. !quiz ile başla!');
+          return;
+        }
+        let board = '🏆 ';
+        const medals = ['🥇', '🥈', '🥉', '4.', '5.'];
+        for (let i = 0; i < scores.length; i += 2) {
+          const rank = i / 2;
+          board += `${medals[rank]} ${scores[i]}: ${Math.floor(scores[i + 1])}p `;
+          if (rank < (scores.length / 2) - 1) board += '| ';
+        }
+        await sendKickMessage(board.trim());
+        break;
+      }
+      
+      case '!loadout': {
+        if (!checkCooldown(sender, 'loadout', 10)) return;
+        const weapon = pick(LOADOUT_WEAPONS);
+        const armor = pick(LOADOUT_ARMOR);
+        const backpack = pick(LOADOUT_BACKPACKS);
+        const map = pick(LOADOUT_MAPS);
+        const challenge = pick(LOADOUT_CHALLENGES);
+        const tierBudget = { ucuz: '50-100K₽', orta: '150-250K₽', pahalı: '300-500K₽', troll: '???₽' };
+        const budget = tierBudget[weapon.tier] || '100-200K₽';
+        await sendKickMessage(`🎲 LOADOUT → ${weapon.name} | ${armor.name} | ${backpack} | ${map} | ${budget} | 🔥 ${challenge}`);
+        break;
+      }
+      
+      case '!bahane': {
+        if (!checkCooldown(sender, 'bahane', 5)) return;
+        const p2 = (arr) => arr[Math.floor(Math.random() * arr.length)];
+        let sebep;
+        if (Math.random() < 0.3) {
+          let s1 = p2(BAHANE_SEBEP);
+          let s2 = p2(BAHANE_SEBEP);
+          while (s2 === s1) s2 = p2(BAHANE_SEBEP);
+          sebep = `${s1} + ${s2.toLowerCase()}`;
+        } else {
+          sebep = p2(BAHANE_SEBEP);
+        }
+        await sendKickMessage(`😤 Resmi Bahane: ${sebep}, ${p2(BAHANE_DETAY)}. ${p2(BAHANE_FINAL)}`);
+        break;
+      }
+      
+      case '!bot': {
+        if (!checkCooldown(sender, 'bot', 5)) return;
+        const roast = BOT_ROASTS[Math.floor(Math.random() * BOT_ROASTS.length)];
+        await sendKickMessage(`🤖 aFaTSuMNiDyA: "${roast}"`);
+        break;
+      }
+      
+      default:
+        break;
+    }
+  } catch (err) {
+    console.error('Webhook handler hatası:', err.message);
+  }
+});
+
+// Bot durumu
+app.get('/bot/status', async (req, res) => {
+  const token = await redis(['GET', 'kick:access_token']);
+  const expires = await redis(['GET', 'kick:token_expires']);
+  const hasToken = !!token;
+  const expiresIn = expires ? Math.round((parseInt(expires) - Date.now()) / 60000) : 0;
+  
+  res.json({
+    status: hasToken ? 'aktif' : 'yetkilendirilmemiş',
+    tokenExpires: expiresIn > 0 ? `${expiresIn} dakika` : 'süresi dolmuş',
+    channel: KICK_CHANNEL_SLUG,
+    authUrl: hasToken ? null : '/auth/kick'
+  });
+});
+
 // Health check
 app.get('/api/healthz', (req, res) => {
   res.json({ status: 'ok' });
@@ -760,9 +1126,9 @@ app.get('/api/healthz', (req, res) => {
 
 // Root
 app.get('/', (req, res) => {
-  res.type('text/plain').send('Tarkov Time API - /api/tarkov-time');
+  res.type('text/plain').send('FurkanBot - Kick Chat Bot | /auth/kick ile yetkilendir | /bot/status ile durumu kontrol et');
 });
 
 app.listen(PORT, () => {
-  console.log(`Tarkov Time API running on port ${PORT}`);
+  console.log(`FurkanBot running on port ${PORT}`);
 });
