@@ -12,8 +12,13 @@ app.use(express.json()); // Webhook POST body için
 const KICK_CLIENT_ID = process.env.KICK_CLIENT_ID || '01KPVXW5GWMP71138FF945DWN1';
 const KICK_CLIENT_SECRET = process.env.KICK_CLIENT_SECRET || 'fd09d3572d7022e2b6d0b9d849aa8c373c2e509b8508655ab13f5121c9b814ca';
 const KICK_REDIRECT_URI = process.env.KICK_REDIRECT_URI || 'https://tarkov-time-api.onrender.com/auth/callback';
-const KICK_BROADCASTER_ID = 24615034;
-const KICK_CHANNEL_SLUG = 'mfurkan-fndk';
+
+// Çoklu kanal desteği
+const CHANNELS = {
+  24615034: { slug: 'mfurkan-fndk', name: 'mfurkan_fndk' },
+  82062980: { slug: 'oyunmodu', name: 'oyunmodu' }
+};
+const ALL_BROADCASTER_IDS = Object.keys(CHANNELS).map(Number);
 
 // ========== TARKOV TIME HESAPLAMA ==========
 // Tarkov'da zaman gerçek zamanın 7 katı hızda ilerler
@@ -846,8 +851,8 @@ async function refreshKickToken() {
   }
 }
 
-// Kick API ile mesaj gönder
-async function sendKickMessage(content) {
+// Kick API ile mesaj gönder (broadcasterId ile hangi kanala yazacağını belirle)
+async function sendKickMessage(content, broadcasterId) {
   try {
     const token = await getKickAccessToken();
     if (!token) {
@@ -862,7 +867,7 @@ async function sendKickMessage(content) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        broadcaster_user_id: KICK_BROADCASTER_ID,
+        broadcaster_user_id: broadcasterId || ALL_BROADCASTER_IDS[0],
         content: content,
         type: 'user'
       })
@@ -986,6 +991,7 @@ app.get('/auth/callback', async (req, res) => {
 // Webhook aboneliği kur
 async function setupWebhookSubscription(token) {
   try {
+    // User access token kullanılıyorsa broadcaster_user_id otomatik belirlenir
     const res = await fetch('https://api.kick.com/public/v1/events/subscriptions', {
       method: 'POST',
       headers: {
@@ -993,7 +999,6 @@ async function setupWebhookSubscription(token) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        broadcaster_user_id: KICK_BROADCASTER_ID,
         events: [
           { name: 'chat.message.sent', version: 1 },
           { name: 'channel.reward.redemption.updated', version: 1 }
@@ -1053,8 +1058,9 @@ app.post('/webhook/kick', async (req, res) => {
       const redeemer = body?.redeemer?.username || 'bilinmeyen';
       const redemptionId = body?.id || '';
       const status = body?.status || '';
+      const channelId = body?.broadcaster?.user_id || ALL_BROADCASTER_IDS[0];
       
-      console.log(`[REWARD] ${redeemer} redeemed: ${rewardTitle} (status: ${status})`);
+      console.log(`[REWARD] ${redeemer} redeemed: ${rewardTitle} (status: ${status}, channel: ${channelId})`);
       
       // Sadece pending durumundaki loadout ödülünü işle
       if (status === 'pending' && rewardTitle.toLowerCase().includes('loadout')) {
@@ -1066,7 +1072,7 @@ app.post('/webhook/kick', async (req, res) => {
         const tierBudget = { ucuz: '50-100K₽', orta: '150-250K₽', pahalı: '300-500K₽', troll: '???₽' };
         const budget = tierBudget[weapon.tier] || '100-200K₽';
         
-        await sendKickMessage(`🎲 @${redeemer} LOADOUT CHALLENGE → ${weapon.name} | ${armor.name} | ${backpack} | ${map} | ${budget} | 🔥 ${challenge}`);
+        await sendKickMessage(`🎲 @${redeemer} LOADOUT CHALLENGE → ${weapon.name} | ${armor.name} | ${backpack} | ${map} | ${budget} | 🔥 ${challenge}`, channelId);
         
         // Ödülü otomatik kabul et
         try {
@@ -1090,6 +1096,7 @@ app.post('/webhook/kick', async (req, res) => {
     const content = body?.content || '';
     const sender = body?.sender?.username || 'bilinmeyen';
     const senderId = body?.sender?.user_id || 0;
+    const channelId = body?.broadcaster?.user_id || ALL_BROADCASTER_IDS[0];
     
     // Bot kendi mesajlarını yoksay (sonsuz döngü önleme)
     if (sender === 'OMbot' || senderId === 100063968) return;
@@ -1101,7 +1108,8 @@ app.post('/webhook/kick', async (req, res) => {
     const command = parts[0].toLowerCase();
     const args = parts.slice(1).join(' ');
     
-    console.log(`[CMD] ${sender}: ${content}`);
+    const channelName = CHANNELS[channelId]?.slug || 'bilinmeyen';
+    console.log(`[CMD] ${sender}@${channelName}: ${content}`);
     
     // Komut yönlendirme
     switch (command) {
@@ -1109,7 +1117,7 @@ app.post('/webhook/kick', async (req, res) => {
         if (!checkCooldown(sender, 'tarkovsaat', 5)) return;
         const left = getTarkovTime(true);
         const right = getTarkovTime(false);
-        await sendKickMessage(`🌅 ${left} | 🌙 ${right}`);
+        await sendKickMessage(`🌅 ${left} | 🌙 ${right}`, channelId);
         break;
       }
       
@@ -1123,10 +1131,10 @@ app.post('/webhook/kick', async (req, res) => {
             const diffMin = Math.round(diffMs / 60000);
             timeStr = diffMin < 60 ? `(${diffMin} dk önce)` : `(${Math.round(diffMin/60)} saat önce)`;
           }
-          await sendKickMessage(`👹 Goons: ${mapNameTR} ${timeStr}`);
+          await sendKickMessage(`👹 Goons: ${mapNameTR} ${timeStr}`, channelId);
         } catch (err) {
           console.error('Goons hatası:', err.message);
-          await sendKickMessage('❌ Goon bilgisi alınamadı.');
+          await sendKickMessage('❌ Goon bilgisi alınamadı.', channelId);
         }
         break;
       }
@@ -1136,10 +1144,10 @@ app.post('/webhook/kick', async (req, res) => {
         try {
           const { eventNameTR, bullets } = await getLatestEvent();
           const shortBullets = bullets.slice(0, 3).join(' | ');
-          await sendKickMessage(`📢 ${eventNameTR} → ${shortBullets}`);
+          await sendKickMessage(`📢 ${eventNameTR} → ${shortBullets}`, channelId);
         } catch (err) {
           console.error('Etkinlik hatası:', err.message);
-          await sendKickMessage('❌ Etkinlik bilgisi alınamadı.');
+          await sendKickMessage('❌ Etkinlik bilgisi alınamadı.', channelId);
         }
         break;
       }
@@ -1150,7 +1158,7 @@ app.post('/webhook/kick', async (req, res) => {
         const question = await generateQuestion();
         await redis(['SET', 'quiz:active', JSON.stringify(question)]);
         await redis(['SET', 'quiz:answered', 'false']);
-        await sendKickMessage(`❓ ${question.q} (💡 İpucu: ${question.hint}) — !c ile cevapla`);
+        await sendKickMessage(`❓ ${question.q} (💡 İpucu: ${question.hint}) — !c ile cevapla`, channelId);
         break;
       }
       
@@ -1158,12 +1166,12 @@ app.post('/webhook/kick', async (req, res) => {
         if (!args || !checkCooldown(sender, 'c', 3)) return;
         const activeJson = await redis(['GET', 'quiz:active']);
         if (!activeJson) {
-          await sendKickMessage(`❌ Aktif soru yok. !quiz yazarak yeni soru al.`);
+          await sendKickMessage(`❌ Aktif soru yok. !quiz yazarak yeni soru al.`, channelId);
           return;
         }
         const answered = await redis(['GET', 'quiz:answered']);
         if (answered === 'true') {
-          await sendKickMessage(`⏰ Bu soru cevaplanmış. !quiz ile yeni soru al.`);
+          await sendKickMessage(`⏰ Bu soru cevaplanmış. !quiz ile yeni soru al.`, channelId);
           return;
         }
         const question = JSON.parse(activeJson);
@@ -1171,9 +1179,9 @@ app.post('/webhook/kick', async (req, res) => {
           await redis(['SET', 'quiz:answered', 'true']);
           await redis(['ZINCRBY', 'quiz:scores', 1, sender]);
           const score = await redis(['ZSCORE', 'quiz:scores', sender]);
-          await sendKickMessage(`✅ @${sender} doğru bildi! +1 puan (Toplam: ${Math.floor(score)} puan) 🎉`);
+          await sendKickMessage(`✅ @${sender} doğru bildi! +1 puan (Toplam: ${Math.floor(score)} puan) 🎉`, channelId);
         } else {
-          await sendKickMessage(`❌ @${sender} yanlış! Tekrar dene.`);
+          await sendKickMessage(`❌ @${sender} yanlış! Tekrar dene.`, channelId);
         }
         break;
       }
@@ -1182,7 +1190,7 @@ app.post('/webhook/kick', async (req, res) => {
         if (!checkCooldown(sender, 'skor', 5)) return;
         const scores = await redis(['ZREVRANGE', 'quiz:scores', 0, 4, 'WITHSCORES']);
         if (!scores || scores.length === 0) {
-          await sendKickMessage('🏆 Henüz skor yok. !quiz ile başla!');
+          await sendKickMessage('🏆 Henüz skor yok. !quiz ile başla!', channelId);
           return;
         }
         let board = '🏆 ';
@@ -1192,7 +1200,7 @@ app.post('/webhook/kick', async (req, res) => {
           board += `${medals[rank]} ${scores[i]}: ${Math.floor(scores[i + 1])}p `;
           if (rank < (scores.length / 2) - 1) board += '| ';
         }
-        await sendKickMessage(board.trim());
+        await sendKickMessage(board.trim(), channelId);
         break;
       }
       
@@ -1205,7 +1213,7 @@ app.post('/webhook/kick', async (req, res) => {
         const challenge = pick(LOADOUT_CHALLENGES);
         const tierBudget = { ucuz: '50-100K₽', orta: '150-250K₽', pahalı: '300-500K₽', troll: '???₽' };
         const budget = tierBudget[weapon.tier] || '100-200K₽';
-        await sendKickMessage(`🎲 LOADOUT → ${weapon.name} | ${armor.name} | ${backpack} | ${map} | ${budget} | 🔥 ${challenge}`);
+        await sendKickMessage(`🎲 LOADOUT → ${weapon.name} | ${armor.name} | ${backpack} | ${map} | ${budget} | 🔥 ${challenge}`, channelId);
         break;
       }
       
@@ -1221,14 +1229,14 @@ app.post('/webhook/kick', async (req, res) => {
         } else {
           sebep = p2(BAHANE_SEBEP);
         }
-        await sendKickMessage(`😤 Resmi Bahane: ${sebep}, ${p2(BAHANE_DETAY)}. ${p2(BAHANE_FINAL)}`);
+        await sendKickMessage(`😤 Resmi Bahane: ${sebep}, ${p2(BAHANE_DETAY)}. ${p2(BAHANE_FINAL)}`, channelId);
         break;
       }
       
       case '!bot': {
         if (!checkCooldown(sender, 'bot', 5)) return;
         const roast = BOT_ROASTS[Math.floor(Math.random() * BOT_ROASTS.length)];
-        await sendKickMessage(`🤖 aFaTSuMNiDyA: "${roast}"`);
+        await sendKickMessage(`🤖 aFaTSuMNiDyA: "${roast}"`, channelId);
         break;
       }
       
@@ -1290,7 +1298,7 @@ app.get('/bot/test', async (req, res) => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        broadcaster_user_id: KICK_BROADCASTER_ID,
+        broadcaster_user_id: ALL_BROADCASTER_IDS[0],
         content: '🤖 FurkanBot test mesajı!',
         type: 'user'
       })
