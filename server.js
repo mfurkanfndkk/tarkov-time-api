@@ -1021,19 +1021,31 @@ app.post('/webhook/kick', async (req, res) => {
       case '!goons': {
         if (!checkCooldown(sender, 'goons', 10)) return;
         try {
-          const goonMsg = await getGoonLocation();
-          await sendKickMessage(goonMsg);
+          const { mapNameTR, time } = await getGoonLocation();
+          let timeStr = '';
+          if (time) {
+            const diffMs = Date.now() - time.getTime();
+            const diffMin = Math.round(diffMs / 60000);
+            timeStr = diffMin < 60 ? `(${diffMin} dk önce)` : `(${Math.round(diffMin/60)} saat önce)`;
+          }
+          await sendKickMessage(`👹 Goons: ${mapNameTR} ${timeStr}`);
         } catch (err) {
           console.error('Goons hatası:', err.message);
-          await sendKickMessage('❌ Goon bilgisi alınamadı, site yanıt vermiyor.');
+          await sendKickMessage('❌ Goon bilgisi alınamadı.');
         }
         break;
       }
       
       case '!etkinlik': {
         if (!checkCooldown(sender, 'etkinlik', 15)) return;
-        const eventMsg = await getLatestEvent();
-        await sendKickMessage(eventMsg);
+        try {
+          const { eventNameTR, bullets } = await getLatestEvent();
+          const shortBullets = bullets.slice(0, 3).join(' | ');
+          await sendKickMessage(`📢 ${eventNameTR} → ${shortBullets}`);
+        } catch (err) {
+          console.error('Etkinlik hatası:', err.message);
+          await sendKickMessage('❌ Etkinlik bilgisi alınamadı.');
+        }
         break;
       }
       
