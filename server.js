@@ -1229,7 +1229,7 @@ app.post('/webhook/kick', async (req, res) => {
       
       case '!komutlar': {
         if (!checkCooldown(sender, 'komutlar', 10)) return;
-        await sendKickMessage(`📋 Komutlar → !tarkovsaat | !goons | !etkinlik | !quiz | !c <cevap> | !skor | !bahane | !bot | 🎲 Loadout = Sadakat Puanı`, channelId);
+        await sendKickMessage(`📋 Komutlar → !tarkovsaat | !goons | !etkinlik | !quiz | !c <cevap> | !skor | !bahane | !bot`, channelId);
         break;
       }
       
