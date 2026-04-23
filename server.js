@@ -889,7 +889,7 @@ app.get('/auth/kick', (req, res) => {
   const codeChallenge = generateCodeChallenge(codeVerifier);
   const state = crypto.randomBytes(16).toString('hex');
   
-  const scopes = 'user:read channel:read chat:write events:subscribe moderation:manage';
+  const scopes = 'user:read channel:read chat:write events:subscribe moderation:manage channel:rewards:write channel:rewards:read';
   
   const url = `https://id.kick.com/oauth/authorize?` +
     `response_type=code&` +
@@ -955,7 +955,10 @@ async function setupWebhookSubscription(token) {
       },
       body: JSON.stringify({
         broadcaster_user_id: KICK_BROADCASTER_ID,
-        events: [{ name: 'chat.message.sent', version: 1 }],
+        events: [
+          { name: 'chat.message.sent', version: 1 },
+          { name: 'channel.reward.redemption.updated', version: 1 }
+        ],
         method: 'webhook'
       })
     });
@@ -1005,7 +1008,43 @@ app.post('/webhook/kick', async (req, res) => {
     if (webhookLogs.length > 20) webhookLogs.pop();
     console.log('[WEBHOOK]', JSON.stringify(logEntry));
     
-    // Sadece chat mesajlarını işle
+    // === ÖDÜL REDEMPTİON HANDLER ===
+    if (eventType === 'channel.reward.redemption.updated') {
+      const rewardTitle = body?.reward?.title || '';
+      const redeemer = body?.redeemer?.username || 'bilinmeyen';
+      const redemptionId = body?.id || '';
+      const status = body?.status || '';
+      
+      console.log(`[REWARD] ${redeemer} redeemed: ${rewardTitle} (status: ${status})`);
+      
+      // Sadece pending durumundaki loadout ödülünü işle
+      if (status === 'pending' && rewardTitle.toLowerCase().includes('loadout')) {
+        const weapon = pick(LOADOUT_WEAPONS);
+        const armor = pick(LOADOUT_ARMOR);
+        const backpack = pick(LOADOUT_BACKPACKS);
+        const map = pick(LOADOUT_MAPS);
+        const challenge = pick(LOADOUT_CHALLENGES);
+        const tierBudget = { ucuz: '50-100K₽', orta: '150-250K₽', pahalı: '300-500K₽', troll: '???₽' };
+        const budget = tierBudget[weapon.tier] || '100-200K₽';
+        
+        await sendKickMessage(`🎲 @${redeemer} LOADOUT CHALLENGE → ${weapon.name} | ${armor.name} | ${backpack} | ${map} | ${budget} | 🔥 ${challenge}`);
+        
+        // Ödülü otomatik kabul et
+        try {
+          const token = await getKickAccessToken();
+          if (token && redemptionId) {
+            await fetch('https://api.kick.com/public/v1/channels/rewards/redemptions/accept', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ids: [redemptionId] })
+            });
+          }
+        } catch (e) { console.error('Reward accept hatası:', e.message); }
+      }
+      return;
+    }
+    
+    // === CHAT MESAJ HANDLER ===
     if (eventType !== 'chat.message.sent') return;
     
     // Resmi payload: { message_id, content, sender: { username, user_id }, broadcaster: {...} }
@@ -1165,6 +1204,38 @@ app.post('/webhook/kick', async (req, res) => {
 // Webhook log debug
 app.get('/webhook/logs', (req, res) => {
   res.json({ count: webhookLogs.length, logs: webhookLogs });
+});
+
+// Kanal ödülü oluştur
+app.get('/bot/setup-rewards', async (req, res) => {
+  try {
+    const token = await getKickAccessToken();
+    if (!token) return res.json({ error: 'Token yok, önce /auth/kick ile yetkilendir' });
+    
+    const cost = parseInt(req.query.cost) || 500;
+    
+    const kickRes = await fetch('https://api.kick.com/public/v1/channels/rewards', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        title: '🎲 Loadout Challenge',
+        description: 'Rastgele silah, zırh, harita ve challenge ile loadout al!',
+        cost: cost,
+        background_color: '#FF4500',
+        is_enabled: true,
+        is_user_input_required: false,
+        should_redemptions_skip_request_queue: false
+      })
+    });
+    
+    const data = await kickRes.json();
+    res.json({ status: kickRes.status, data });
+  } catch (err) {
+    res.json({ error: err.message });
+  }
 });
 
 // Test mesaj gönder
