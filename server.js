@@ -1319,6 +1319,259 @@ app.get('/bot/status', async (req, res) => {
   });
 });
 
+// ========== ZAMANLI MESAJ SİSTEMİ ==========
+
+// Zamanlı mesaj API'leri
+app.get('/api/timers', async (req, res) => {
+  const data = await redis(['GET', 'bot:timers']);
+  res.json(data ? JSON.parse(data) : []);
+});
+
+app.post('/api/timers', express.json(), async (req, res) => {
+  const { message, interval, channelId, enabled } = req.body;
+  if (!message || !interval) return res.status(400).json({ error: 'message ve interval gerekli' });
+  
+  const data = await redis(['GET', 'bot:timers']);
+  const timers = data ? JSON.parse(data) : [];
+  
+  timers.push({
+    id: Date.now().toString(),
+    message,
+    interval: parseInt(interval), // dakika
+    channelId: parseInt(channelId) || ALL_BROADCASTER_IDS[0],
+    enabled: enabled !== false,
+    lastSent: 0
+  });
+  
+  await redis(['SET', 'bot:timers', JSON.stringify(timers)]);
+  res.json({ success: true, timers });
+});
+
+app.delete('/api/timers/:id', async (req, res) => {
+  const data = await redis(['GET', 'bot:timers']);
+  let timers = data ? JSON.parse(data) : [];
+  timers = timers.filter(t => t.id !== req.params.id);
+  await redis(['SET', 'bot:timers', JSON.stringify(timers)]);
+  res.json({ success: true, timers });
+});
+
+app.patch('/api/timers/:id', express.json(), async (req, res) => {
+  const data = await redis(['GET', 'bot:timers']);
+  let timers = data ? JSON.parse(data) : [];
+  const timer = timers.find(t => t.id === req.params.id);
+  if (!timer) return res.status(404).json({ error: 'Timer bulunamadı' });
+  
+  if (req.body.enabled !== undefined) timer.enabled = req.body.enabled;
+  if (req.body.message) timer.message = req.body.message;
+  if (req.body.interval) timer.interval = parseInt(req.body.interval);
+  
+  await redis(['SET', 'bot:timers', JSON.stringify(timers)]);
+  res.json({ success: true, timers });
+});
+
+// Zamanlı mesaj döngüsü (30 saniyede bir kontrol)
+setInterval(async () => {
+  try {
+    const data = await redis(['GET', 'bot:timers']);
+    if (!data) return;
+    
+    const timers = JSON.parse(data);
+    const now = Date.now();
+    let updated = false;
+    
+    for (const timer of timers) {
+      if (!timer.enabled) continue;
+      const intervalMs = timer.interval * 60 * 1000;
+      if (now - timer.lastSent >= intervalMs) {
+        await sendKickMessage(timer.message, timer.channelId);
+        timer.lastSent = now;
+        updated = true;
+        console.log(`[TIMER] Sent: "${timer.message}" to channel ${timer.channelId}`);
+      }
+    }
+    
+    if (updated) {
+      await redis(['SET', 'bot:timers', JSON.stringify(timers)]);
+    }
+  } catch (err) {
+    console.error('Timer hatası:', err.message);
+  }
+}, 30000);
+
+// ========== YAYINCI PANELİ ==========
+app.get('/panel', (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OMbot Panel</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: 'Segoe UI', sans-serif; 
+      background: #0a0a0f; 
+      color: #e0e0e0; 
+      min-height: 100vh;
+    }
+    .header {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      padding: 20px 30px;
+      border-bottom: 2px solid #00d4ff33;
+      display: flex; align-items: center; gap: 15px;
+    }
+    .header h1 { font-size: 24px; color: #00d4ff; }
+    .header span { color: #888; font-size: 14px; }
+    .container { max-width: 800px; margin: 30px auto; padding: 0 20px; }
+    
+    .card {
+      background: #12121a;
+      border: 1px solid #2a2a3a;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .card h2 { color: #00d4ff; margin-bottom: 16px; font-size: 18px; }
+    
+    .form-row { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+    .form-row input, .form-row select {
+      flex: 1; min-width: 150px;
+      padding: 10px 14px;
+      background: #1a1a2e;
+      border: 1px solid #333;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 14px;
+    }
+    .form-row input:focus, .form-row select:focus { border-color: #00d4ff; outline: none; }
+    
+    .btn {
+      padding: 10px 20px;
+      border: none; border-radius: 8px;
+      cursor: pointer; font-size: 14px; font-weight: 600;
+      transition: all 0.2s;
+    }
+    .btn-primary { background: #00d4ff; color: #000; }
+    .btn-primary:hover { background: #00b8d4; transform: translateY(-1px); }
+    .btn-danger { background: #ff4444; color: #fff; font-size: 12px; padding: 6px 12px; }
+    .btn-danger:hover { background: #cc3333; }
+    .btn-toggle { font-size: 12px; padding: 6px 12px; }
+    .btn-on { background: #00c853; color: #000; }
+    .btn-off { background: #555; color: #ccc; }
+    
+    .timer-list { display: flex; flex-direction: column; gap: 10px; }
+    .timer-item {
+      display: flex; align-items: center; gap: 12px;
+      background: #1a1a2e;
+      padding: 14px 16px;
+      border-radius: 8px;
+      border-left: 3px solid #00d4ff;
+    }
+    .timer-item.disabled { opacity: 0.5; border-left-color: #555; }
+    .timer-msg { flex: 1; font-size: 14px; word-break: break-word; }
+    .timer-info { color: #888; font-size: 12px; white-space: nowrap; }
+    .timer-actions { display: flex; gap: 6px; }
+    
+    .empty { text-align: center; color: #666; padding: 30px; }
+    .channel-tag {
+      font-size: 11px; padding: 2px 8px;
+      background: #2a2a3a; border-radius: 4px; color: #aaa;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🤖 OMbot Panel</h1>
+    <span>Zamanlı Mesaj Yönetimi</span>
+  </div>
+  
+  <div class="container">
+    <div class="card">
+      <h2>➕ Yeni Zamanlı Mesaj</h2>
+      <div class="form-row">
+        <input type="text" id="msg" placeholder="Mesaj metni..." />
+      </div>
+      <div class="form-row">
+        <input type="number" id="interval" placeholder="Dakika (ör: 10)" min="1" value="10" />
+        <select id="channel">
+          ${Object.entries(CHANNELS).map(([id, ch]) => `<option value="${id}">${ch.slug}</option>`).join('')}
+        </select>
+        <button class="btn btn-primary" onclick="addTimer()">Ekle</button>
+      </div>
+    </div>
+    
+    <div class="card">
+      <h2>📋 Aktif Zamanlı Mesajlar</h2>
+      <div id="timerList" class="timer-list">
+        <div class="empty">Yükleniyor...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const CHANNELS = ${JSON.stringify(CHANNELS)};
+    
+    async function loadTimers() {
+      const res = await fetch('/api/timers');
+      const timers = await res.json();
+      const list = document.getElementById('timerList');
+      
+      if (timers.length === 0) {
+        list.innerHTML = '<div class="empty">Henüz zamanlı mesaj yok. Yukarıdan ekle!</div>';
+        return;
+      }
+      
+      list.innerHTML = timers.map(t => {
+        const ch = CHANNELS[t.channelId]?.slug || 'bilinmeyen';
+        return \`<div class="timer-item \${t.enabled ? '' : 'disabled'}">
+          <div class="timer-msg">\${t.message}</div>
+          <span class="channel-tag">\${ch}</span>
+          <span class="timer-info">\${t.interval} dk</span>
+          <div class="timer-actions">
+            <button class="btn btn-toggle \${t.enabled ? 'btn-on' : 'btn-off'}" 
+              onclick="toggleTimer('\${t.id}', \${!t.enabled})">\${t.enabled ? 'ON' : 'OFF'}</button>
+            <button class="btn btn-danger" onclick="deleteTimer('\${t.id}')">Sil</button>
+          </div>
+        </div>\`;
+      }).join('');
+    }
+    
+    async function addTimer() {
+      const message = document.getElementById('msg').value.trim();
+      const interval = document.getElementById('interval').value;
+      const channelId = document.getElementById('channel').value;
+      if (!message) return alert('Mesaj boş olamaz!');
+      
+      await fetch('/api/timers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, interval, channelId })
+      });
+      document.getElementById('msg').value = '';
+      loadTimers();
+    }
+    
+    async function deleteTimer(id) {
+      if (!confirm('Bu mesajı silmek istediğine emin misin?')) return;
+      await fetch('/api/timers/' + id, { method: 'DELETE' });
+      loadTimers();
+    }
+    
+    async function toggleTimer(id, enabled) {
+      await fetch('/api/timers/' + id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled })
+      });
+      loadTimers();
+    }
+    
+    loadTimers();
+  </script>
+</body>
+</html>`);
+});
+
 // Health check
 app.get('/api/healthz', (req, res) => {
   res.json({ status: 'ok' });
