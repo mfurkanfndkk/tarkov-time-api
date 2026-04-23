@@ -16,23 +16,29 @@
     .fr { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
     .fr input { flex: 1; min-width: 150px; padding: 10px 14px; background: #1a1a2e; border: 1px solid #333; border-radius: 8px; color: #fff; font-size: 14px; }
     .fr input:focus { border-color: #00d4ff; outline: none; }
-    .btn { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s; }
+    .btn { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s; }
     .bp { background: #00d4ff; color: #000; }
-    .bp:hover { background: #00b8d4; transform: translateY(-1px); }
-    .bd { background: #ff4444; color: #fff; font-size: 12px; padding: 6px 12px; }
+    .bp:hover { background: #00b8d4; }
+    .bd { background: #ff4444; color: #fff; }
     .bd:hover { background: #cc3333; }
-    .bt { font-size: 12px; padding: 6px 12px; }
+    .be { background: #ff9800; color: #000; }
+    .be:hover { background: #e68a00; }
     .bon { background: #00c853; color: #000; }
     .boff { background: #555; color: #ccc; }
-    .tl { display: flex; flex-direction: column; gap: 10px; }
-    .ti { display: flex; align-items: center; gap: 12px; background: #1a1a2e; padding: 14px 16px; border-radius: 8px; border-left: 3px solid #00d4ff; }
+    .tl { display: flex; flex-direction: column; gap: 12px; }
+    .ti { background: #1a1a2e; padding: 16px; border-radius: 10px; border-left: 3px solid #00d4ff; }
     .ti.off { opacity: 0.5; border-left-color: #555; }
+    .ti-top { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
     .tm { flex: 1; font-size: 14px; word-break: break-word; }
-    .tinf { background: #252535; color: #00d4ff; font-size: 12px; white-space: nowrap; cursor: pointer; padding: 6px 10px; border-radius: 6px; border: 1px solid #333; transition: all 0.2s; user-select: none; }
-    .tinf:hover { border-color: #00d4ff; background: #1a1a3a; }
-    .tinf input { width: 50px; padding: 4px 6px; background: #0a0a0f; border: 1px solid #00d4ff; border-radius: 4px; color: #fff; font-size: 12px; text-align: center; }
-    .ta { display: flex; gap: 6px; }
+    .ti-bottom { display: flex; align-items: center; gap: 8px; }
+    .tinf { background: #252535; color: #00d4ff; font-size: 12px; padding: 4px 10px; border-radius: 6px; }
+    .ta { display: flex; gap: 6px; margin-left: auto; }
     .empty { text-align: center; color: #666; padding: 30px; }
+    .edit-form { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid #333; }
+    .edit-form.show { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .edit-form input { padding: 8px 12px; background: #0a0a0f; border: 1px solid #00d4ff; border-radius: 6px; color: #fff; font-size: 13px; }
+    .edit-form input[type=text] { flex: 1; min-width: 200px; }
+    .edit-form input[type=number] { width: 80px; }
   </style>
 </head>
 <body>
@@ -48,83 +54,130 @@
       </div>
       <div class="fr">
         <input type="number" id="iv" placeholder="Dakika" min="1" value="10" style="max-width:120px">
-        <button class="btn bp" onclick="addTimer()">Ekle</button>
+        <button class="btn bp" id="addBtn">Ekle</button>
       </div>
     </div>
     <div class="card">
       <h2>📋 Zamanlı Mesajlar</h2>
-      <div id="list" class="tl">
-        <div class="empty">Yükleniyor...</div>
-      </div>
+      <div id="list" class="tl"></div>
     </div>
   </div>
   <script>
-    const SLUG = '{{SLUG}}';
-    const KEY = '{{KEY}}';
-    const API = '/api/timers/' + SLUG + '?key=' + KEY;
+    var SLUG = '{{SLUG}}';
+    var KEY = '{{KEY}}';
+    var BASE = '/api/timers/' + SLUG;
+    var timersData = [];
 
-    async function loadTimers() {
-      const res = await fetch(API);
-      const timers = await res.json();
-      const list = document.getElementById('list');
-      if (!timers.length) {
+    function api(path, method, body) {
+      var opts = { method: method || 'GET', headers: {} };
+      if (body) {
+        opts.headers['Content-Type'] = 'application/json';
+        opts.body = JSON.stringify(body);
+      }
+      return fetch(path + (path.indexOf('?') > -1 ? '&' : '?') + 'key=' + KEY, opts);
+    }
+
+    function render() {
+      var list = document.getElementById('list');
+      if (!timersData.length) {
         list.innerHTML = '<div class="empty">Henüz zamanlı mesaj yok.</div>';
         return;
       }
-      list.innerHTML = timers.map(function(t) {
-        return '<div class="ti ' + (t.enabled ? '' : 'off') + '">'
-          + '<div class="tm">' + t.message + '</div>'
-          + '<span class="tinf" onclick="editInterval(\'' + t.id + '\',' + t.interval + ',this)" title="Tıkla değiştir">⏱ ' + t.interval + ' dk</span>'
-          + '<div class="ta">'
-          + '<button class="btn bt ' + (t.enabled ? 'bon' : 'boff') + '" onclick="toggleTimer(\'' + t.id + '\',' + !t.enabled + ')">' + (t.enabled ? 'ON' : 'OFF') + '</button>'
-          + '<button class="btn bd" onclick="deleteTimer(\'' + t.id + '\')">Sil</button>'
-          + '</div></div>';
-      }).join('');
+      var html = '';
+      for (var i = 0; i < timersData.length; i++) {
+        var t = timersData[i];
+        html += '<div class="ti ' + (t.enabled ? '' : 'off') + '" data-id="' + t.id + '">';
+        html += '<div class="ti-top"><div class="tm">' + escapeHtml(t.message) + '</div></div>';
+        html += '<div class="ti-bottom">';
+        html += '<span class="tinf">⏱ ' + t.interval + ' dk</span>';
+        html += '<div class="ta">';
+        html += '<button class="btn be edit-btn">✏️ Düzenle</button>';
+        html += '<button class="btn ' + (t.enabled ? 'bon' : 'boff') + ' toggle-btn">' + (t.enabled ? 'ON' : 'OFF') + '</button>';
+        html += '<button class="btn bd del-btn">Sil</button>';
+        html += '</div></div>';
+        html += '<div class="edit-form" id="edit-' + t.id + '">';
+        html += '<input type="text" class="edit-msg" value="' + escapeAttr(t.message) + '">';
+        html += '<input type="number" class="edit-iv" min="1" value="' + t.interval + '">';
+        html += '<button class="btn bp save-btn">Kaydet</button>';
+        html += '</div>';
+        html += '</div>';
+      }
+      list.innerHTML = html;
+      attachEvents();
     }
 
-    function editInterval(id, current, el) {
-      el.innerHTML = '<input type="number" min="1" value="' + current + '" onblur="saveInterval(\'' + id + '\',this.value)" onkeydown="if(event.key===\'Enter\')this.blur()" autofocus>';
-      el.querySelector('input').focus();
+    function escapeHtml(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    function escapeAttr(s) {
+      return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
 
-    async function saveInterval(id, val) {
-      var v = parseInt(val);
-      if (!v || v < 1) { loadTimers(); return; }
-      await fetch('/api/timers/' + SLUG + '/' + id + '?key=' + KEY, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ interval: v })
-      });
+    function attachEvents() {
+      var items = document.querySelectorAll('.ti');
+      for (var i = 0; i < items.length; i++) {
+        (function(item) {
+          var id = item.getAttribute('data-id');
+          
+          item.querySelector('.edit-btn').addEventListener('click', function() {
+            var form = document.getElementById('edit-' + id);
+            form.classList.toggle('show');
+          });
+          
+          item.querySelector('.toggle-btn').addEventListener('click', function() {
+            var t = findTimer(id);
+            if (t) doToggle(id, !t.enabled);
+          });
+          
+          item.querySelector('.del-btn').addEventListener('click', function() {
+            if (confirm('Silmek istediğine emin misin?')) doDelete(id);
+          });
+          
+          item.querySelector('.save-btn').addEventListener('click', function() {
+            var msg = item.querySelector('.edit-msg').value.trim();
+            var iv = parseInt(item.querySelector('.edit-iv').value);
+            if (msg && iv > 0) doSave(id, msg, iv);
+          });
+        })(items[i]);
+      }
+    }
+
+    function findTimer(id) {
+      for (var i = 0; i < timersData.length; i++) {
+        if (timersData[i].id === id) return timersData[i];
+      }
+      return null;
+    }
+
+    async function loadTimers() {
+      var res = await api(BASE, 'GET');
+      timersData = await res.json();
+      render();
+    }
+
+    async function doToggle(id, enabled) {
+      await api(BASE + '/' + id, 'PATCH', { enabled: enabled });
       loadTimers();
     }
 
-    async function addTimer() {
+    async function doDelete(id) {
+      await api(BASE + '/' + id, 'DELETE');
+      loadTimers();
+    }
+
+    async function doSave(id, message, interval) {
+      await api(BASE + '/' + id, 'PATCH', { message: message, interval: interval });
+      loadTimers();
+    }
+
+    document.getElementById('addBtn').addEventListener('click', async function() {
       var m = document.getElementById('msg').value.trim();
       var i = document.getElementById('iv').value;
       if (!m) return alert('Mesaj boş!');
-      await fetch(API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: m, interval: i })
-      });
+      await api(BASE, 'POST', { message: m, interval: i });
       document.getElementById('msg').value = '';
       loadTimers();
-    }
-
-    async function deleteTimer(id) {
-      if (!confirm('Silmek istediğine emin misin?')) return;
-      await fetch('/api/timers/' + SLUG + '/' + id + '?key=' + KEY, { method: 'DELETE' });
-      loadTimers();
-    }
-
-    async function toggleTimer(id, enabled) {
-      await fetch('/api/timers/' + SLUG + '/' + id + '?key=' + KEY, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: enabled })
-      });
-      loadTimers();
-    }
+    });
 
     loadTimers();
   </script>
