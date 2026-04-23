@@ -131,13 +131,30 @@ async function getLatestEvent() {
     headers: { 'User-Agent': 'TarkovBot/1.0' }
   });
   const sectionsData = await sectionsRes.json();
-  const firstSection = sectionsData.parse?.sections?.[0];
-  if (!firstSection) throw new Error('Etkinlik bulunamadı');
+  const sections = sectionsData.parse?.sections || [];
+  
+  // Sadece level 2 (ana etkinlik) bölümlerini al ve tarihe göre sırala
+  const mainSections = sections.filter(s => s.toclevel === 1 || s.level === '2');
+  if (mainSections.length === 0) throw new Error('Etkinlik bulunamadı');
+  
+  // Tarih parse edip en yeniyi bul
+  let latestSection = mainSections[0];
+  let latestDate = new Date(0);
+  for (const s of mainSections) {
+    const dateMatch = s.line.match(/\((\d{1,2}\s+\w+\s+\d{4})/);
+    if (dateMatch) {
+      const parsed = new Date(dateMatch[1]);
+      if (!isNaN(parsed) && parsed > latestDate) {
+        latestDate = parsed;
+        latestSection = s;
+      }
+    }
+  }
+  
+  const eventName = latestSection.line;
 
-  const eventName = firstSection.line; // Örn: "Casus belli (9 April 2026)"
-
-  // İlk bölümün wikitext'ini al
-  const wikiUrl = `https://escapefromtarkov.fandom.com/api.php?action=parse&page=Events&prop=wikitext&section=${firstSection.index}&format=json`;
+  // En güncel bölümün wikitext'ini al
+  const wikiUrl = `https://escapefromtarkov.fandom.com/api.php?action=parse&page=Events&prop=wikitext&section=${latestSection.index}&format=json`;
   const wikiRes = await fetch(wikiUrl, {
     headers: { 'User-Agent': 'TarkovBot/1.0' }
   });
