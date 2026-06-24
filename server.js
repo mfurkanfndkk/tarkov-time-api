@@ -1314,7 +1314,7 @@ app.get('/bot/status', async (req, res) => {
   res.json({
     status: hasToken ? 'aktif' : 'yetkilendirilmemiş',
     tokenExpires: expiresIn > 0 ? `${expiresIn} dakika` : 'süresi dolmuş',
-    channel: KICK_CHANNEL_SLUG,
+    channels: Object.values(CHANNELS).map(c => c.slug),
     authUrl: hasToken ? null : '/auth/kick'
   });
 });
