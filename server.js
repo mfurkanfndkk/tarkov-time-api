@@ -1262,9 +1262,9 @@ app.post('/webhook/kick', async (req, res) => {
             const pmcSurv = gc(pmc, 'ExitStatus', 'Survived', 'Pmc');
             const scavSurv = gc(scav, 'ExitStatus', 'Survived', 'Scav');
             const survRate = totalRaids > 0 ? ((pmcSurv + scavSurv) / totalRaids * 100).toFixed(1) : '0';
-            const kills = gc(pmc, 'Kills') + gc(scav, 'Kills');
-            const deaths = gc(pmc, 'Deaths') + gc(scav, 'Deaths');
-            const kd = deaths > 0 ? (kills / deaths).toFixed(2) : kills;
+            const killedPmc = gc(pmc, 'KilledPmc');
+            const pmcDeaths = gc(pmc, 'Deaths');
+            const kd = pmcDeaths > 0 ? (killedPmc / pmcDeaths).toFixed(2) : killedPmc;
             const hours = ((p.pmcStats?.eft?.totalInGameTime || 0) / 3600).toFixed(0);
             pvpLine = `🎯 PVP: ${hours}h Played / ${kd} KD / ${survRate}% SR / ${totalRaids} Raids`;
           }
@@ -1291,9 +1291,9 @@ app.post('/webhook/kick', async (req, res) => {
               const sRaids = gc2(sPmc, 'Sessions', 'Pmc') + gc2(sScav, 'Sessions', 'Scav');
               const sSurv = gc2(sPmc, 'ExitStatus', 'Survived', 'Pmc') + gc2(sScav, 'ExitStatus', 'Survived', 'Scav');
               const sSR = sRaids > 0 ? ((sSurv / sRaids) * 100).toFixed(1) : '0';
-              const sKills = gc2(sPmc, 'Kills') + gc2(sScav, 'Kills');
-              const sDeaths = gc2(sPmc, 'Deaths') + gc2(sScav, 'Deaths');
-              const sKD = sDeaths > 0 ? (sKills / sDeaths).toFixed(2) : sKills;
+              const sKilledPmc = gc2(sPmc, 'KilledPmc');
+              const sPmcDeaths = gc2(sPmc, 'Deaths');
+              const sKD = sPmcDeaths > 0 ? (sKilledPmc / sPmcDeaths).toFixed(2) : sKilledPmc;
               const sHours = ((sp.pmcStats?.eft?.totalInGameTime || 0) / 3600).toFixed(0);
               seasonLine = `🏆 PVP-Sezon: ${sHours}h Played / ${sKD} KD / ${sSR}% SR / ${sRaids} Raids`;
             }
