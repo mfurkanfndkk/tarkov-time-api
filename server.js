@@ -1223,7 +1223,9 @@ app.post('/webhook/kick', async (req, res) => {
       case '!bot': {
         if (!checkCooldown(sender, 'bot', 5)) return;
         const roast = BOT_ROASTS[Math.floor(Math.random() * BOT_ROASTS.length)];
-        await sendKickMessage(`🤖 aFaTSuMNiDyA: "${roast}"`, channelId);
+        const mention = args ? args.replace('@', '').trim() : sender;
+        const target = mention || sender;
+        await sendKickMessage(`🤖 ${target}: "${roast}"`, channelId);
         break;
       }
       
