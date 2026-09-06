@@ -1251,22 +1251,18 @@ app.post('/webhook/kick', async (req, res) => {
           if (regRes.ok) {
             const p = await regRes.json();
             const pmc = p.pmcStats?.eft?.overAllCounters?.Items || [];
-            const scav = p.scavStats?.eft?.overAllCounters?.Items || [];
             const gc = (items, ...keys) => {
               const e = items.find(i => i.Key.length === keys.length && keys.every((k, idx) => i.Key[idx] === k));
               return e ? Number(e.Value) || 0 : 0;
             };
             const pmcRaids = gc(pmc, 'Sessions', 'Pmc');
-            const scavRaids = gc(scav, 'Sessions', 'Scav');
-            const totalRaids = pmcRaids + scavRaids;
             const pmcSurv = gc(pmc, 'ExitStatus', 'Survived', 'Pmc');
-            const scavSurv = gc(scav, 'ExitStatus', 'Survived', 'Scav');
-            const survRate = totalRaids > 0 ? ((pmcSurv + scavSurv) / totalRaids * 100).toFixed(1) : '0';
+            const survRate = pmcRaids > 0 ? ((pmcSurv / pmcRaids) * 100).toFixed(1) : '0';
             const killedPmc = gc(pmc, 'KilledPmc');
             const pmcDeaths = gc(pmc, 'Deaths');
             const kd = pmcDeaths > 0 ? (killedPmc / pmcDeaths).toFixed(2) : killedPmc;
             const hours = ((p.pmcStats?.eft?.totalInGameTime || 0) / 3600).toFixed(0);
-            pvpLine = `🎯 PVP: ${hours}h Played / ${kd} KD / ${survRate}% SR / ${totalRaids} Raids`;
+            pvpLine = `🎯 PVP: ${hours}h Played / ${kd} KD / ${survRate}% SR / ${pmcRaids} Raids`;
           }
           
           // PVP-Season profili çek  
@@ -1283,13 +1279,12 @@ app.post('/webhook/kick', async (req, res) => {
             if (sRes.ok) {
               const sp = await sRes.json();
               const sPmc = sp.pmcStats?.eft?.overAllCounters?.Items || [];
-              const sScav = sp.scavStats?.eft?.overAllCounters?.Items || [];
               const gc2 = (items, ...keys) => {
                 const e = items.find(i => i.Key.length === keys.length && keys.every((k, idx) => i.Key[idx] === k));
                 return e ? Number(e.Value) || 0 : 0;
               };
-              const sRaids = gc2(sPmc, 'Sessions', 'Pmc') + gc2(sScav, 'Sessions', 'Scav');
-              const sSurv = gc2(sPmc, 'ExitStatus', 'Survived', 'Pmc') + gc2(sScav, 'ExitStatus', 'Survived', 'Scav');
+              const sRaids = gc2(sPmc, 'Sessions', 'Pmc');
+              const sSurv = gc2(sPmc, 'ExitStatus', 'Survived', 'Pmc');
               const sSR = sRaids > 0 ? ((sSurv / sRaids) * 100).toFixed(1) : '0';
               const sKilledPmc = gc2(sPmc, 'KilledPmc');
               const sPmcDeaths = gc2(sPmc, 'Deaths');
