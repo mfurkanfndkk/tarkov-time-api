@@ -1313,7 +1313,7 @@ app.post('/webhook/kick', async (req, res) => {
         const vol = parseInt(args);
         if (isNaN(vol) || vol < 0 || vol > 100) { await sendKickMessage('❌ Kullanım: !volume 0-100', channelId); break; }
         try {
-          const res = await spotifyApi(`?volume_percent=${vol}`, 'PUT');
+          const res = await spotifyApi(`/volume?volume_percent=${vol}`, 'PUT');
           if (res.error) await sendKickMessage(`❌ ${res.error}`, channelId);
           else await sendKickMessage(`🔊 Ses: ${vol}%`, channelId);
         } catch(e) { await sendKickMessage('❌ Volume hatası.', channelId); }
