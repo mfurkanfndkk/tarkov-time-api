@@ -20,6 +20,29 @@ const CHANNELS = {
 };
 const ALL_BROADCASTER_IDS = Object.keys(CHANNELS).map(Number);
 
+// ========== SPOTIFY CONFIG ==========
+const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID || 'a6a42b28f22f4e69b7516a145bb4874c';
+const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET || 'bce0a38eb9fc4a57aad4719912140227';
+const SPOTIFY_REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI || 'https://tarkov-time-api.onrender.com/auth/spotify/callback';
+
+// Moderatör / yayıncı kontrol
+function isModerator(body) {
+  const identity = body?.sender?.identity;
+  const senderId = body?.sender?.user_id || 0;
+  // Yayıncılar her zaman yetkili
+  if (ALL_BROADCASTER_IDS.includes(senderId)) return true;
+  // Kick identity badges kontrolü
+  if (identity?.badges) {
+    const badges = identity.badges;
+    if (Array.isArray(badges)) {
+      return badges.some(b => b.type === 'moderator' || b.type === 'broadcaster');
+    }
+  }
+  // is_moderator flag kontrolü
+  if (identity?.is_moderator) return true;
+  return false;
+}
+
 // ========== TARKOV TIME HESAPLAMA ==========
 // Tarkov'da zaman gerçek zamanın 7 katı hızda ilerler
 // Left (gündüz): 3 saat offset
@@ -1231,7 +1254,69 @@ app.post('/webhook/kick', async (req, res) => {
       
       case '!komutlar': {
         if (!checkCooldown(sender, 'komutlar', 10)) return;
-        await sendKickMessage(`📋 Komutlar → !tarkovsaat | !goons | !etkinlik | !quiz | !c <cevap> | !skor | !bahane | !bot | !kd`, channelId);
+        await sendKickMessage(`📋 Komutlar → !tarkovsaat | !goons | !etkinlik | !quiz | !c <cevap> | !skor | !bahane | !bot | !kd | !song | !skip | !pause | !play`, channelId);
+        break;
+      }
+
+      case '!song': {
+        if (!checkCooldown(sender, 'song', 5)) return;
+        try {
+          const song = await getCurrentSong();
+          if (!song) await sendKickMessage('🎵 Şu an hiçbir şey çalmıyor.', channelId);
+          else if (song.includes('bağlı değil')) await sendKickMessage('❌ Spotify bağlı değil.', channelId);
+          else await sendKickMessage(`🎵 ${song}`, channelId);
+        } catch(e) { await sendKickMessage('❌ Spotify hatası.', channelId); }
+        break;
+      }
+
+      case '!skip': {
+        if (!isModerator(body)) { await sendKickMessage('⛔ Bu komut sadece moderatörler için.', channelId); break; }
+        if (!checkCooldown(sender, 'skip', 3)) return;
+        try {
+          const res = await spotifyApi('/next', 'POST');
+          if (res.error) await sendKickMessage(`❌ ${res.error}`, channelId);
+          else {
+            // Kısa bekle, yeni şarkıyı göster
+            await new Promise(r => setTimeout(r, 1000));
+            const song = await getCurrentSong();
+            await sendKickMessage(`⏭ Geçildi → 🎵 ${song || '...'}`, channelId);
+          }
+        } catch(e) { await sendKickMessage('❌ Skip hatası.', channelId); }
+        break;
+      }
+
+      case '!pause': {
+        if (!isModerator(body)) { await sendKickMessage('⛔ Bu komut sadece moderatörler için.', channelId); break; }
+        if (!checkCooldown(sender, 'pause', 3)) return;
+        try {
+          const res = await spotifyApi('/pause', 'PUT');
+          if (res.error) await sendKickMessage(`❌ ${res.error}`, channelId);
+          else await sendKickMessage('⏸ Müzik duraklatıldı.', channelId);
+        } catch(e) { await sendKickMessage('❌ Pause hatası.', channelId); }
+        break;
+      }
+
+      case '!play': {
+        if (!isModerator(body)) { await sendKickMessage('⛔ Bu komut sadece moderatörler için.', channelId); break; }
+        if (!checkCooldown(sender, 'play', 3)) return;
+        try {
+          const res = await spotifyApi('/play', 'PUT');
+          if (res.error) await sendKickMessage(`❌ ${res.error}`, channelId);
+          else await sendKickMessage('▶️ Müzik devam ediyor.', channelId);
+        } catch(e) { await sendKickMessage('❌ Play hatası.', channelId); }
+        break;
+      }
+
+      case '!volume': {
+        if (!isModerator(body)) { await sendKickMessage('⛔ Bu komut sadece moderatörler için.', channelId); break; }
+        if (!checkCooldown(sender, 'volume', 3)) return;
+        const vol = parseInt(args);
+        if (isNaN(vol) || vol < 0 || vol > 100) { await sendKickMessage('❌ Kullanım: !volume 0-100', channelId); break; }
+        try {
+          const res = await spotifyApi(`?volume_percent=${vol}`, 'PUT');
+          if (res.error) await sendKickMessage(`❌ ${res.error}`, channelId);
+          else await sendKickMessage(`🔊 Ses: ${vol}%`, channelId);
+        } catch(e) { await sendKickMessage('❌ Volume hatası.', channelId); }
         break;
       }
       
@@ -1387,6 +1472,123 @@ app.get('/bot/status', async (req, res) => {
     authUrl: hasToken ? null : '/auth/kick'
   });
 });
+
+// ========== SPOTIFY ENTEGRASYONU ==========
+
+// Spotify OAuth başlat
+app.get('/auth/spotify', (req, res) => {
+  const scopes = 'user-read-currently-playing user-modify-playback-state user-read-playback-state';
+  const authUrl = `https://accounts.spotify.com/authorize?response_type=code&client_id=${SPOTIFY_CLIENT_ID}&scope=${encodeURIComponent(scopes)}&redirect_uri=${encodeURIComponent(SPOTIFY_REDIRECT_URI)}`;
+  res.redirect(authUrl);
+});
+
+// Spotify OAuth callback
+app.get('/auth/spotify/callback', async (req, res) => {
+  const { code } = req.query;
+  if (!code) return res.send('Hata: code yok');
+  
+  try {
+    const tokenRes = await fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': 'Basic ' + Buffer.from(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`).toString('base64')
+      },
+      body: `grant_type=authorization_code&code=${code}&redirect_uri=${encodeURIComponent(SPOTIFY_REDIRECT_URI)}`
+    });
+    
+    const data = await tokenRes.json();
+    if (data.error) return res.send(`Spotify hata: ${data.error_description}`);
+    
+    await redis(['SET', 'spotify:access_token', data.access_token]);
+    await redis(['SET', 'spotify:refresh_token', data.refresh_token]);
+    await redis(['SET', 'spotify:token_expires', String(Date.now() + data.expires_in * 1000)]);
+    
+    console.log('Spotify token kaydedildi!');
+    res.send('<h1 style="color:green;font-family:sans-serif;text-align:center;margin-top:100px">✅ Spotify bağlandı!</h1>');
+  } catch (err) {
+    res.send(`Hata: ${err.message}`);
+  }
+});
+
+// Spotify token yenile
+async function refreshSpotifyToken() {
+  const refreshToken = await redis(['GET', 'spotify:refresh_token']);
+  if (!refreshToken) return null;
+  
+  try {
+    const res = await fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': 'Basic ' + Buffer.from(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`).toString('base64')
+      },
+      body: `grant_type=refresh_token&refresh_token=${refreshToken}`
+    });
+    
+    const data = await res.json();
+    if (data.error) { console.error('Spotify refresh hatası:', data.error); return null; }
+    
+    await redis(['SET', 'spotify:access_token', data.access_token]);
+    await redis(['SET', 'spotify:token_expires', String(Date.now() + data.expires_in * 1000)]);
+    if (data.refresh_token) await redis(['SET', 'spotify:refresh_token', data.refresh_token]);
+    
+    return data.access_token;
+  } catch (err) {
+    console.error('Spotify token yenileme hatası:', err.message);
+    return null;
+  }
+}
+
+// Spotify token al (gerekirse yenile)
+async function getSpotifyToken() {
+  const expires = await redis(['GET', 'spotify:token_expires']);
+  if (expires && Date.now() < parseInt(expires) - 60000) {
+    return await redis(['GET', 'spotify:access_token']);
+  }
+  return await refreshSpotifyToken();
+}
+
+// Spotify API çağrısı
+async function spotifyApi(endpoint, method = 'GET', body = null) {
+  const token = await getSpotifyToken();
+  if (!token) return { error: 'Spotify bağlı değil' };
+  
+  const opts = {
+    method,
+    headers: { 'Authorization': `Bearer ${token}` }
+  };
+  if (body) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  
+  const res = await fetch(`https://api.spotify.com/v1/me/player${endpoint}`, opts);
+  
+  if (res.status === 204) return { success: true };
+  if (res.status === 401) {
+    // Token expired, try refresh
+    const newToken = await refreshSpotifyToken();
+    if (!newToken) return { error: 'Spotify oturumu süresi doldu' };
+    opts.headers['Authorization'] = `Bearer ${newToken}`;
+    const retry = await fetch(`https://api.spotify.com/v1/me/player${endpoint}`, opts);
+    if (retry.status === 204) return { success: true };
+    if (!retry.ok) return { error: `Spotify API: ${retry.status}` };
+    return await retry.json().catch(() => ({ success: true }));
+  }
+  if (!res.ok) return { error: `Spotify API: ${res.status}` };
+  return await res.json().catch(() => ({ success: true }));
+}
+
+// Şu an çalan şarkı
+async function getCurrentSong() {
+  const data = await spotifyApi('/currently-playing');
+  if (data.error) return data.error;
+  if (!data.item) return null;
+  const artist = data.item.artists?.map(a => a.name).join(', ') || 'Bilinmeyen';
+  const track = data.item.name || 'Bilinmeyen';
+  return `${artist} - ${track}`;
+}
 
 // ========== ZAMANLI MESAJ SİSTEMİ ==========
 
