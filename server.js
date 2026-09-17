@@ -1578,7 +1578,7 @@ async function getSpotifyToken() {
 // Spotify API çağrısı
 async function spotifyApi(endpoint, method = 'GET', body = null) {
   const token = await getSpotifyToken();
-  if (!token) return { error: 'Spotify bağlı değil' };
+  if (!token) return { error: 'Spotify bağlı değil. /auth/spotify ile bağla' };
   
   const opts = {
     method,
@@ -1593,17 +1593,34 @@ async function spotifyApi(endpoint, method = 'GET', body = null) {
   
   if (res.status === 204) return { success: true };
   if (res.status === 401) {
-    // Token expired, try refresh
     const newToken = await refreshSpotifyToken();
-    if (!newToken) return { error: 'Spotify oturumu süresi doldu' };
+    if (!newToken) return { error: 'Spotify oturumu süresi doldu. /auth/spotify ile yeniden bağla' };
     opts.headers['Authorization'] = `Bearer ${newToken}`;
     const retry = await fetch(`https://api.spotify.com/v1/me/player${endpoint}`, opts);
     if (retry.status === 204) return { success: true };
-    if (!retry.ok) return { error: `Spotify API: ${retry.status}` };
+    if (!retry.ok) {
+      const errData = await retry.json().catch(() => ({}));
+      return { error: spotifyErrorMsg(retry.status, errData) };
+    }
     return await retry.json().catch(() => ({ success: true }));
   }
-  if (!res.ok) return { error: `Spotify API: ${res.status}` };
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    return { error: spotifyErrorMsg(res.status, errData) };
+  }
   return await res.json().catch(() => ({ success: true }));
+}
+
+function spotifyErrorMsg(status, data) {
+  const reason = data?.error?.reason || data?.error?.message || '';
+  if (status === 403) {
+    if (reason.includes('PREMIUM')) return 'Spotify Premium gerekli';
+    if (reason.includes('ALREADY_PAUSED') || reason.includes('already paused')) return 'Zaten duraklatılmış';
+    return 'Aktif cihaz yok veya yetki hatası. Spotify açık mı?';
+  }
+  if (status === 404) return 'Aktif cihaz bulunamadı. Spotify\'da bir şarkı çal';
+  if (status === 502) return 'Spotify geçici hata, tekrar dene';
+  return `Spotify hatası (${status})`;
 }
 
 // Şu an çalan şarkı
