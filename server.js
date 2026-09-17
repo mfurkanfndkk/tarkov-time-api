@@ -1322,20 +1322,26 @@ app.post('/webhook/kick', async (req, res) => {
 
       case '!çal': {
         if (!isModerator(body)) { await sendKickMessage('⛔ Bu komut sadece moderatörler için.', channelId); break; }
-        if (!args) { await sendKickMessage('❌ Kullanım: !çal <şarkı adı>', channelId); break; }
+        if (!args) { await sendKickMessage('❌ Kullanım: !çal <spotify linki>', channelId); break; }
         if (!checkCooldown(sender, 'çal', 3)) return;
         try {
           const token = await getSpotifyToken();
           if (!token) { await sendKickMessage('❌ Spotify bağlı değil.', channelId); break; }
-          const searchRes = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(args)}&type=track&limit=1`, {
+          // Spotify linkinden track ID çıkar
+          const linkMatch = args.match(/open\.spotify\.com\/track\/([a-zA-Z0-9]+)/);
+          if (!linkMatch) { await sendKickMessage('❌ Geçerli bir Spotify linki gir. Örnek: !çal https://open.spotify.com/track/...', channelId); break; }
+          const trackId = linkMatch[1];
+          const trackUri = `spotify:track:${trackId}`;
+          // Şarkı bilgisini al
+          const infoRes = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
-          const searchData = await searchRes.json();
-          const track = searchData.tracks?.items?.[0];
-          if (!track) { await sendKickMessage('❌ Şarkı bulunamadı.', channelId); break; }
-          const queueRes = await spotifyApi(`/queue?uri=${encodeURIComponent(track.uri)}`, 'POST');
+          const trackInfo = await infoRes.json();
+          if (trackInfo.error) { await sendKickMessage('❌ Şarkı bulunamadı.', channelId); break; }
+          // Kuyruğa ekle
+          const queueRes = await spotifyApi(`/queue?uri=${encodeURIComponent(trackUri)}`, 'POST');
           if (queueRes.error) await sendKickMessage(`❌ ${queueRes.error}`, channelId);
-          else await sendKickMessage(`✅ Kuyruğa eklendi → 🎵 ${track.artists.map(a => a.name).join(', ')} - ${track.name}`, channelId);
+          else await sendKickMessage(`✅ Kuyruğa eklendi → 🎵 ${trackInfo.artists.map(a => a.name).join(', ')} - ${trackInfo.name}`, channelId);
         } catch(e) { await sendKickMessage('❌ Şarkı ekleme hatası.', channelId); }
         break;
       }
