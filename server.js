@@ -880,7 +880,7 @@ async function sendKickMessage(content, broadcasterId) {
     const token = await getKickAccessToken();
     if (!token) {
       console.error('Kick token yok! /auth/kick adresinden yetkilendir.');
-      return false;
+      return null;
     }
     
     const res = await fetch('https://api.kick.com/public/v1/chat', {
@@ -899,14 +899,43 @@ async function sendKickMessage(content, broadcasterId) {
     if (!res.ok) {
       const err = await res.text();
       console.error('Mesaj gönderilemedi:', res.status, err);
-      return false;
+      return null;
     }
     
-    return true;
+    // message_id'yi dön
+    try {
+      const data = await res.json();
+      return data?.data?.message_id || data?.message_id || true;
+    } catch(e) { return true; }
   } catch (err) {
     console.error('Kick mesaj hatası:', err.message);
-    return false;
+    return null;
   }
+}
+
+// Kick mesaj sil
+async function deleteKickMessage(messageId) {
+  try {
+    const token = await getKickAccessToken();
+    if (!token || !messageId || messageId === true) return;
+    
+    const res = await fetch(`https://api.kick.com/public/v1/chat/${messageId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) console.error('Mesaj silinemedi:', res.status);
+  } catch (err) {
+    console.error('Mesaj silme hatası:', err.message);
+  }
+}
+
+// Spotify komutu gönder ve 5 sn sonra sil
+async function sendSpotifyResponse(content, channelId) {
+  const msgId = await sendKickMessage(content, channelId);
+  if (msgId && msgId !== true) {
+    setTimeout(() => deleteKickMessage(msgId), 5000);
+  }
+  return msgId;
 }
 
 // === OAuth Endpoints ===
@@ -921,7 +950,7 @@ app.get('/auth/kick', (req, res) => {
   const codeChallenge = generateCodeChallenge(codeVerifier);
   const state = crypto.randomBytes(16).toString('hex');
   
-  const scopes = 'user:read channel:read chat:write events:subscribe moderation:manage';
+  const scopes = 'user:read channel:read chat:write chat:read events:subscribe moderation:manage';
   
   const url = `https://id.kick.com/oauth/authorize?` +
     `response_type=code&` +
@@ -1270,79 +1299,75 @@ app.post('/webhook/kick', async (req, res) => {
       }
 
       case '!skip': {
-        if (!isModerator(body)) { await sendKickMessage('⛔ Bu komut sadece moderatörler için.', channelId); break; }
+        if (!isModerator(body)) { await sendSpotifyResponse('⛔ Bu komut sadece moderatörler için.', channelId); break; }
         if (!checkCooldown(sender, 'skip', 3)) return;
         try {
           const res = await spotifyApi('/next', 'POST');
-          if (res.error) await sendKickMessage(`❌ ${res.error}`, channelId);
+          if (res.error) await sendSpotifyResponse(`❌ ${res.error}`, channelId);
           else {
-            // Kısa bekle, yeni şarkıyı göster
             await new Promise(r => setTimeout(r, 1000));
             const song = await getCurrentSong();
-            await sendKickMessage(`⏭ Geçildi → 🎵 ${song || '...'}`, channelId);
+            await sendSpotifyResponse(`⏭ Geçildi → 🎵 ${song || '...'}`, channelId);
           }
-        } catch(e) { await sendKickMessage('❌ Skip hatası.', channelId); }
+        } catch(e) { await sendSpotifyResponse('❌ Skip hatası.', channelId); }
         break;
       }
 
       case '!pause': {
-        if (!isModerator(body)) { await sendKickMessage('⛔ Bu komut sadece moderatörler için.', channelId); break; }
+        if (!isModerator(body)) { await sendSpotifyResponse('⛔ Bu komut sadece moderatörler için.', channelId); break; }
         if (!checkCooldown(sender, 'pause', 3)) return;
         try {
           const res = await spotifyApi('/pause', 'PUT');
-          if (res.error) await sendKickMessage(`❌ ${res.error}`, channelId);
-          else await sendKickMessage('⏸ Müzik duraklatıldı.', channelId);
-        } catch(e) { await sendKickMessage('❌ Pause hatası.', channelId); }
+          if (res.error) await sendSpotifyResponse(`❌ ${res.error}`, channelId);
+          else await sendSpotifyResponse('⏸ Müzik duraklatıldı.', channelId);
+        } catch(e) { await sendSpotifyResponse('❌ Pause hatası.', channelId); }
         break;
       }
 
       case '!play': {
-        if (!isModerator(body)) { await sendKickMessage('⛔ Bu komut sadece moderatörler için.', channelId); break; }
+        if (!isModerator(body)) { await sendSpotifyResponse('⛔ Bu komut sadece moderatörler için.', channelId); break; }
         if (!checkCooldown(sender, 'play', 3)) return;
         try {
           const res = await spotifyApi('/play', 'PUT');
-          if (res.error) await sendKickMessage(`❌ ${res.error}`, channelId);
-          else await sendKickMessage('▶️ Müzik devam ediyor.', channelId);
-        } catch(e) { await sendKickMessage('❌ Play hatası.', channelId); }
+          if (res.error) await sendSpotifyResponse(`❌ ${res.error}`, channelId);
+          else await sendSpotifyResponse('▶️ Müzik devam ediyor.', channelId);
+        } catch(e) { await sendSpotifyResponse('❌ Play hatası.', channelId); }
         break;
       }
 
       case '!volume': {
-        if (!isModerator(body)) { await sendKickMessage('⛔ Bu komut sadece moderatörler için.', channelId); break; }
+        if (!isModerator(body)) { await sendSpotifyResponse('⛔ Bu komut sadece moderatörler için.', channelId); break; }
         if (!checkCooldown(sender, 'volume', 3)) return;
         const vol = parseInt(args);
-        if (isNaN(vol) || vol < 0 || vol > 100) { await sendKickMessage('❌ Kullanım: !volume 0-100', channelId); break; }
+        if (isNaN(vol) || vol < 0 || vol > 100) { await sendSpotifyResponse('❌ Kullanım: !volume 0-100', channelId); break; }
         try {
           const res = await spotifyApi(`/volume?volume_percent=${vol}`, 'PUT');
-          if (res.error) await sendKickMessage(`❌ ${res.error}`, channelId);
-          else await sendKickMessage(`🔊 Ses: ${vol}%`, channelId);
-        } catch(e) { await sendKickMessage('❌ Volume hatası.', channelId); }
+          if (res.error) await sendSpotifyResponse(`❌ ${res.error}`, channelId);
+          else await sendSpotifyResponse(`🔊 Ses: ${vol}%`, channelId);
+        } catch(e) { await sendSpotifyResponse('❌ Volume hatası.', channelId); }
         break;
       }
 
       case '!çal': {
-        if (!isModerator(body)) { await sendKickMessage('⛔ Bu komut sadece moderatörler için.', channelId); break; }
-        if (!args) { await sendKickMessage('❌ Kullanım: !çal <spotify linki>', channelId); break; }
+        if (!isModerator(body)) { await sendSpotifyResponse('⛔ Bu komut sadece moderatörler için.', channelId); break; }
+        if (!args) { await sendSpotifyResponse('❌ Kullanım: !çal <spotify linki>', channelId); break; }
         if (!checkCooldown(sender, 'çal', 3)) return;
         try {
           const token = await getSpotifyToken();
-          if (!token) { await sendKickMessage('❌ Spotify bağlı değil.', channelId); break; }
-          // Spotify linkinden track ID çıkar
+          if (!token) { await sendSpotifyResponse('❌ Spotify bağlı değil.', channelId); break; }
           const linkMatch = args.match(/open\.spotify\.com\/(?:intl-[a-z]{2}\/)?track\/([a-zA-Z0-9]+)/);
-          if (!linkMatch) { await sendKickMessage('❌ Geçerli bir Spotify linki gir. Örnek: !çal https://open.spotify.com/track/...', channelId); break; }
+          if (!linkMatch) { await sendSpotifyResponse('❌ Geçerli bir Spotify linki gir.', channelId); break; }
           const trackId = linkMatch[1];
           const trackUri = `spotify:track:${trackId}`;
-          // Şarkı bilgisini al
           const infoRes = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           const trackInfo = await infoRes.json();
-          if (trackInfo.error) { await sendKickMessage('❌ Şarkı bulunamadı.', channelId); break; }
-          // Kuyruğa ekle
+          if (trackInfo.error) { await sendSpotifyResponse('❌ Şarkı bulunamadı.', channelId); break; }
           const queueRes = await spotifyApi(`/queue?uri=${encodeURIComponent(trackUri)}`, 'POST');
-          if (queueRes.error) await sendKickMessage(`❌ ${queueRes.error}`, channelId);
-          else await sendKickMessage(`✅ Kuyruğa eklendi → 🎵 ${trackInfo.artists.map(a => a.name).join(', ')} - ${trackInfo.name}`, channelId);
-        } catch(e) { await sendKickMessage('❌ Şarkı ekleme hatası.', channelId); }
+          if (queueRes.error) await sendSpotifyResponse(`❌ ${queueRes.error}`, channelId);
+          else await sendSpotifyResponse(`✅ Kuyruğa eklendi → 🎵 ${trackInfo.artists.map(a => a.name).join(', ')} - ${trackInfo.name}`, channelId);
+        } catch(e) { await sendSpotifyResponse('❌ Şarkı ekleme hatası.', channelId); }
         break;
       }
       
