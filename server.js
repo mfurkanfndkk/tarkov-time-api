@@ -1254,7 +1254,7 @@ app.post('/webhook/kick', async (req, res) => {
       
       case '!komutlar': {
         if (!checkCooldown(sender, 'komutlar', 10)) return;
-        await sendKickMessage(`📋 Komutlar → !tarkovsaat | !goons | !etkinlik | !quiz | !c <cevap> | !skor | !bahane | !bot | !kd | !song | !skip | !pause | !play`, channelId);
+        await sendKickMessage(`📋 Komutlar → !tarkovsaat | !goons | !etkinlik | !quiz | !c <cevap> | !skor | !bahane | !bot | !kd | !song | !skip | !pause | !play | !çal`, channelId);
         break;
       }
 
@@ -1317,6 +1317,26 @@ app.post('/webhook/kick', async (req, res) => {
           if (res.error) await sendKickMessage(`❌ ${res.error}`, channelId);
           else await sendKickMessage(`🔊 Ses: ${vol}%`, channelId);
         } catch(e) { await sendKickMessage('❌ Volume hatası.', channelId); }
+        break;
+      }
+
+      case '!çal': {
+        if (!isModerator(body)) { await sendKickMessage('⛔ Bu komut sadece moderatörler için.', channelId); break; }
+        if (!args) { await sendKickMessage('❌ Kullanım: !çal <şarkı adı>', channelId); break; }
+        if (!checkCooldown(sender, 'çal', 3)) return;
+        try {
+          const token = await getSpotifyToken();
+          if (!token) { await sendKickMessage('❌ Spotify bağlı değil.', channelId); break; }
+          const searchRes = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(args)}&type=track&limit=1`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const searchData = await searchRes.json();
+          const track = searchData.tracks?.items?.[0];
+          if (!track) { await sendKickMessage('❌ Şarkı bulunamadı.', channelId); break; }
+          const queueRes = await spotifyApi(`/queue?uri=${encodeURIComponent(track.uri)}`, 'POST');
+          if (queueRes.error) await sendKickMessage(`❌ ${queueRes.error}`, channelId);
+          else await sendKickMessage(`✅ Kuyruğa eklendi → 🎵 ${track.artists.map(a => a.name).join(', ')} - ${track.name}`, channelId);
+        } catch(e) { await sendKickMessage('❌ Şarkı ekleme hatası.', channelId); }
         break;
       }
       
