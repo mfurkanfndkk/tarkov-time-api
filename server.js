@@ -1328,7 +1328,7 @@ app.post('/webhook/kick', async (req, res) => {
           const token = await getSpotifyToken();
           if (!token) { await sendKickMessage('❌ Spotify bağlı değil.', channelId); break; }
           // Spotify linkinden track ID çıkar
-          const linkMatch = args.match(/open\.spotify\.com\/track\/([a-zA-Z0-9]+)/);
+          const linkMatch = args.match(/open\.spotify\.com\/(?:intl-[a-z]{2}\/)?track\/([a-zA-Z0-9]+)/);
           if (!linkMatch) { await sendKickMessage('❌ Geçerli bir Spotify linki gir. Örnek: !çal https://open.spotify.com/track/...', channelId); break; }
           const trackId = linkMatch[1];
           const trackUri = `spotify:track:${trackId}`;
