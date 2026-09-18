@@ -904,9 +904,16 @@ async function sendKickMessage(content, broadcasterId) {
     
     // message_id'yi dön
     try {
-      const data = await res.json();
-      return data?.data?.message_id || data?.message_id || true;
-    } catch(e) { return true; }
+      const responseText = await res.text();
+      console.log('[MSG_RESPONSE]', responseText);
+      const data = JSON.parse(responseText);
+      const msgId = data?.data?.message_id || data?.message_id || data?.data?.id || data?.id || null;
+      console.log('[MSG_ID]', msgId);
+      return msgId || true;
+    } catch(e) { 
+      console.log('[MSG_PARSE_ERROR]', e.message);
+      return true; 
+    }
   } catch (err) {
     console.error('Kick mesaj hatası:', err.message);
     return null;
@@ -919,11 +926,16 @@ async function deleteKickMessage(messageId) {
     const token = await getKickAccessToken();
     if (!token || !messageId || messageId === true) return;
     
+    console.log('[MSG_DELETE] Siliniyor:', messageId);
     const res = await fetch(`https://api.kick.com/public/v1/chat/${messageId}`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${token}` }
     });
-    if (!res.ok) console.error('Mesaj silinemedi:', res.status);
+    console.log('[MSG_DELETE] Sonuç:', res.status);
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      console.error('Mesaj silinemedi:', res.status, errText);
+    }
   } catch (err) {
     console.error('Mesaj silme hatası:', err.message);
   }
