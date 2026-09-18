@@ -905,7 +905,6 @@ async function sendKickMessage(content, broadcasterId) {
     // message_id'yi dön
     try {
       const data = await res.json();
-      console.log('[KICK CHAT RESPONSE]', JSON.stringify(data));
       return data?.data?.message_id || data?.message_id || true;
     } catch(e) { return true; }
   } catch (err) {
@@ -918,21 +917,13 @@ async function sendKickMessage(content, broadcasterId) {
 async function deleteKickMessage(messageId) {
   try {
     const token = await getKickAccessToken();
-    if (!token || !messageId || messageId === true) {
-      console.log('[DELETE SKIP]', { token: !!token, messageId });
-      return;
-    }
+    if (!token || !messageId || messageId === true) return;
     
-    console.log('[DELETE ATTEMPT]', messageId);
     const res = await fetch(`https://api.kick.com/public/v1/chat/${messageId}`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${token}` }
     });
-    console.log('[DELETE RESULT]', res.status);
-    if (!res.ok) {
-      const errBody = await res.text().catch(() => '');
-      console.error('Mesaj silinemedi:', res.status, errBody);
-    }
+    if (!res.ok) console.error('Mesaj silinemedi:', res.status);
   } catch (err) {
     console.error('Mesaj silme hatası:', err.message);
   }
