@@ -904,16 +904,10 @@ async function sendKickMessage(content, broadcasterId) {
     
     // message_id'yi dön
     try {
-      const responseText = await res.text();
-      console.log('[MSG_RESPONSE]', responseText);
-      const data = JSON.parse(responseText);
-      const msgId = data?.data?.message_id || data?.message_id || data?.data?.id || data?.id || null;
-      console.log('[MSG_ID]', msgId);
-      return msgId || true;
-    } catch(e) { 
-      console.log('[MSG_PARSE_ERROR]', e.message);
-      return true; 
-    }
+      const data = await res.json();
+      console.log('[KICK CHAT RESPONSE]', JSON.stringify(data));
+      return data?.data?.message_id || data?.message_id || true;
+    } catch(e) { return true; }
   } catch (err) {
     console.error('Kick mesaj hatası:', err.message);
     return null;
@@ -924,17 +918,20 @@ async function sendKickMessage(content, broadcasterId) {
 async function deleteKickMessage(messageId) {
   try {
     const token = await getKickAccessToken();
-    if (!token || !messageId || messageId === true) return;
+    if (!token || !messageId || messageId === true) {
+      console.log('[DELETE SKIP]', { token: !!token, messageId });
+      return;
+    }
     
-    console.log('[MSG_DELETE] Siliniyor:', messageId);
+    console.log('[DELETE ATTEMPT]', messageId);
     const res = await fetch(`https://api.kick.com/public/v1/chat/${messageId}`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${token}` }
     });
-    console.log('[MSG_DELETE] Sonuç:', res.status);
+    console.log('[DELETE RESULT]', res.status);
     if (!res.ok) {
-      const errText = await res.text().catch(() => '');
-      console.error('Mesaj silinemedi:', res.status, errText);
+      const errBody = await res.text().catch(() => '');
+      console.error('Mesaj silinemedi:', res.status, errBody);
     }
   } catch (err) {
     console.error('Mesaj silme hatası:', err.message);
@@ -962,7 +959,7 @@ app.get('/auth/kick', (req, res) => {
   const codeChallenge = generateCodeChallenge(codeVerifier);
   const state = crypto.randomBytes(16).toString('hex');
   
-  const scopes = 'user:read channel:read chat:write chat:read events:subscribe moderation:manage';
+  const scopes = 'user:read channel:read chat:write chat:read events:subscribe moderation:manage moderation:chat_message:manage';
   
   const url = `https://id.kick.com/oauth/authorize?` +
     `response_type=code&` +
