@@ -1286,7 +1286,7 @@ app.post('/webhook/kick', async (req, res) => {
         const bossData = [
           '👹 Reshala: Customs 60%',
           '👹 Tagilla: Factory 35% | Interchange 35% | Night Factory 60%',
-          '👹 Killa: Interchange 35% | Streets 15%',
+          '👹 Killa: Interchange 60%',
           '👹 Shturman: Woods 40%',
           '👹 Sanitar: Shoreline 35%',
           '👹 Glukhar: Lighthouse 100%',
