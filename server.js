@@ -1283,58 +1283,19 @@ app.post('/webhook/kick', async (req, res) => {
       
       case '!boss': {
         if (!checkCooldown(sender, 'boss', 15)) return;
-        try {
-          const BOSS_TR = {
-            'bossBully': 'Reshala', 'bossKilla': 'Killa', 'bossGluhar': 'Glukhar',
-            'bossSanitar': 'Sanitar', 'bossTagilla': 'Tagilla',
-            'bossKolontay': 'Kolontay', 'bossKojaniy': 'Shturman',
-            'bossBoar': 'Kaban', 'sectantPriest': 'Cultist Priest'
-          };
-          const MAP_TR = {
-            'factory': 'Factory', 'customs': 'Customs', 'woods': 'Woods',
-            'lighthouse': 'Lighthouse', 'shoreline': 'Shoreline', 'reserve': 'Reserve',
-            'interchange': 'Interchange', 'streets-of-tarkov': 'Streets',
-            'the-lab': 'Labs', 'night-factory': 'Night Factory',
-            'ground-zero': 'Ground Zero', 'ground-zero-21': 'Ground Zero'
-          };
-          const mapRes = await fetch('https://json.tarkov.dev/regular/maps', {
-            headers: { 'User-Agent': 'TarkovBot/1.0' }
-          });
-          const mapData = await mapRes.json();
-          const maps = mapData?.data?.maps;
-          if (!maps) { await sendKickMessage('❌ Boss verisi alınamadı.', channelId); break; }
-          
-          const bossInfo = {};
-          for (const [mapId, m] of Object.entries(maps)) {
-            const mapName = MAP_TR[m.normalizedName];
-            if (!mapName || !m.bosses) continue;
-            for (const b of m.bosses) {
-              if (!BOSS_TR[b.mob]) continue;
-              const name = BOSS_TR[b.mob];
-              const chance = Math.round(b.spawnChance * 100);
-              if (!bossInfo[name]) bossInfo[name] = [];
-              // Aynı boss aynı haritada birden fazla spawn varsa en yüksek şansı al
-              const existing = bossInfo[name].find(x => x.map === mapName);
-              if (existing) { existing.chance = Math.max(existing.chance, chance); }
-              else bossInfo[name].push({ map: mapName, chance });
-            }
-          }
-          
-          const lines = Object.entries(bossInfo).map(([name, spawns]) => 
-            `👹 ${name}: ${spawns.map(s => `${s.map} ${s.chance}%`).join(' | ')}`
-          );
-          
-          if (lines.length === 0) { await sendKickMessage('❌ Boss verisi bulunamadı.', channelId); break; }
-          
-          const mid = Math.ceil(lines.length / 2);
-          await sendKickMessage(lines.slice(0, mid).join(' — '), channelId);
-          if (lines.length > mid) {
-            await sendKickMessage(lines.slice(mid).join(' — '), channelId);
-          }
-        } catch (err) {
-          console.error('Boss hatası:', err.message);
-          await sendKickMessage('❌ Boss verisi alınamadı.', channelId);
-        }
+        const bossData = [
+          '👹 Reshala: Customs 60%',
+          '👹 Tagilla: Factory 35% | Interchange 35% | Night Factory 60%',
+          '👹 Killa: Interchange 35% | Streets 15%',
+          '👹 Shturman: Woods 40%',
+          '👹 Sanitar: Shoreline 35%',
+          '👹 Glukhar: Lighthouse 100%',
+          '👹 Kaban: Streets 60%',
+          '👹 Kolontay: Streets 20%',
+          '👹 Cultist Priest: Customs 20% | Woods 20% | Shoreline 17% | Night Factory 8% | Ground Zero 21+ 2%'
+        ];
+        await sendKickMessage(bossData.slice(0, 5).join(' — '), channelId);
+        await sendKickMessage(bossData.slice(5).join(' — '), channelId);
         break;
       }
       
