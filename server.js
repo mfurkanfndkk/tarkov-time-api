@@ -1281,9 +1281,67 @@ app.post('/webhook/kick', async (req, res) => {
         break;
       }
       
+      case '!boss': {
+        if (!checkCooldown(sender, 'boss', 15)) return;
+        try {
+          const BOSS_TR = {
+            'bossBully': 'Reshala', 'bossKilla': 'Killa', 'bossGluhar': 'Glukhar',
+            'bossSanitar': 'Sanitar', 'bossTagilla': 'Tagilla', 'bossZryachiy': 'Zryachiy',
+            'bossKolontay': 'Kolontay', 'bossKojaniy': 'Shturman', 'bossKnight': 'Knight',
+            'bossBoar': 'Kaban', 'sectantPriest': 'Cultist Priest', 'bossPartisan': 'Partisan'
+          };
+          const MAP_TR = {
+            '55f2d3fd4bdc2d5f408b4567': 'Woods', '56f40101d2720b2a4d8b45d6': 'Customs',
+            '5704e3c2d2720bac5b8b4567': 'Factory', '5704e4dad2720bb55b8b4567': 'Lighthouse',
+            '5704e554d2720bac5b8b456e': 'Shoreline', '5704e5fad2720bc05b8b4567': 'Interchange',
+            '5714dbc024597771384a510d': 'Streets', '5714dc692459777137212e12': 'Reserve',
+            '59fc81d786f774390775787e': 'Labs', '5b0fc42d86f7744a585f9105': 'Ground Zero'
+          };
+          const mapRes = await fetch('https://json.tarkov.dev/regular/maps', {
+            headers: { 'User-Agent': 'TarkovBot/1.0' }
+          });
+          const mapData = await mapRes.json();
+          const maps = mapData?.data?.maps;
+          if (!maps) { await sendKickMessage('❌ Boss verisi alınamadı.', channelId); break; }
+          
+          // Ana bossları topla (her boss → en yüksek spawn rate olan harita)
+          const bossInfo = {};
+          for (const [mapId, m] of Object.entries(maps)) {
+            const mapName = MAP_TR[mapId];
+            if (!mapName || !m.bosses) continue;
+            for (const b of m.bosses) {
+              const mob = b.mob;
+              if (!BOSS_TR[mob]) continue;
+              const name = BOSS_TR[mob];
+              const chance = Math.round(b.spawnChance * 100);
+              const escorts = b.escorts?.length || 0;
+              if (!bossInfo[name]) bossInfo[name] = [];
+              bossInfo[name].push(`${mapName} ${chance}%${escorts > 0 ? ` (${escorts}BD)` : ''}`);
+            }
+          }
+          
+          const lines = Object.entries(bossInfo).map(([name, spawns]) => 
+            `👹 ${name}: ${spawns.join(' | ')}`
+          );
+          
+          if (lines.length === 0) { await sendKickMessage('❌ Boss verisi bulunamadı.', channelId); break; }
+          
+          // Kick mesaj limiti nedeniyle 2 mesaja böl
+          const mid = Math.ceil(lines.length / 2);
+          await sendKickMessage(lines.slice(0, mid).join(' — '), channelId);
+          if (lines.length > mid) {
+            await sendKickMessage(lines.slice(mid).join(' — '), channelId);
+          }
+        } catch (err) {
+          console.error('Boss hatası:', err.message);
+          await sendKickMessage('❌ Boss verisi alınamadı.', channelId);
+        }
+        break;
+      }
+      
       case '!komutlar': {
         if (!checkCooldown(sender, 'komutlar', 10)) return;
-        await sendKickMessage(`📋 Komutlar → !tarkovsaat | !goons | !etkinlik | !quiz | !c <cevap> | !skor | !bahane | !bot | !kd | !song | !skip | !pause | !play | !çal`, channelId);
+        await sendKickMessage(`📋 Komutlar → !tarkovsaat | !goons | !etkinlik | !quiz | !c <cevap> | !skor | !bahane | !bot | !kd | !boss | !song | !skip | !pause | !play | !çal`, channelId);
         break;
       }
 
