@@ -1301,7 +1301,7 @@ app.post('/webhook/kick', async (req, res) => {
       
       case '!komutlar': {
         if (!checkCooldown(sender, 'komutlar', 10)) return;
-        await sendKickMessage(`📋 Komutlar → !tarkovsaat | !goons | !etkinlik | !quiz | !c <cevap> | !skor | !bahane | !bot | !kd | !boss | !song | !skip | !pause | !play | !çal`, channelId);
+        await sendKickMessage(`📋 Komutlar → !tarkovsaat | !goons | !etkinlik | !quiz | !c <cevap> | !skor | !bahane | !bot | !kd | !boss | !song | !skip | !pause | !play | !volume | !çal`, channelId);
         break;
       }
 
@@ -1368,24 +1368,42 @@ app.post('/webhook/kick', async (req, res) => {
 
       case '!çal': {
         if (!isModerator(body)) { await sendSpotifyResponse('⛔ Bu komut sadece moderatörler için.', channelId); break; }
-        if (!args) { await sendSpotifyResponse('❌ Kullanım: !çal <spotify linki>', channelId); break; }
+        if (!args) { await sendSpotifyResponse('❌ Kullanım: !çal <spotify şarkı/playlist linki>', channelId); break; }
         if (!checkCooldown(sender, 'çal', 3)) return;
         try {
           const token = await getSpotifyToken();
           if (!token) { await sendSpotifyResponse('❌ Spotify bağlı değil.', channelId); break; }
-          const linkMatch = args.match(/open\.spotify\.com\/(?:intl-[a-z]{2}\/)?track\/([a-zA-Z0-9]+)/);
-          if (!linkMatch) { await sendSpotifyResponse('❌ Geçerli bir Spotify linki gir.', channelId); break; }
-          const trackId = linkMatch[1];
+          
+          // Playlist linki kontrol
+          const playlistMatch = args.match(/open\.spotify\.com\/(?:intl-[a-z]{2}\/)?playlist\/([a-zA-Z0-9]+)/);
+          if (playlistMatch) {
+            const playlistId = playlistMatch[1];
+            const playRes = await spotifyApi('/play', 'PUT', { context_uri: `spotify:playlist:${playlistId}` });
+            if (playRes.error) { await sendSpotifyResponse(`❌ ${playRes.error}`, channelId); break; }
+            // Playlist adını al
+            const plInfo = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}?fields=name`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+            }).then(r => r.json()).catch(() => ({}));
+            await sendSpotifyResponse(`▶️ Playlist çalınıyor → 🎵 ${plInfo.name || 'Playlist'}`, channelId);
+            break;
+          }
+          
+          // Track linki kontrol
+          const trackMatch = args.match(/open\.spotify\.com\/(?:intl-[a-z]{2}\/)?track\/([a-zA-Z0-9]+)/);
+          if (!trackMatch) { await sendSpotifyResponse('❌ Geçerli bir Spotify linki gir (şarkı veya playlist).', channelId); break; }
+          const trackId = trackMatch[1];
           const trackUri = `spotify:track:${trackId}`;
+          // Direkt çal
+          const playRes = await spotifyApi('/play', 'PUT', { uris: [trackUri] });
+          if (playRes.error) { await sendSpotifyResponse(`❌ ${playRes.error}`, channelId); break; }
+          // Şarkı bilgisini al
           const infoRes = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           const trackInfo = await infoRes.json();
-          if (trackInfo.error) { await sendSpotifyResponse('❌ Şarkı bulunamadı.', channelId); break; }
-          const queueRes = await spotifyApi(`/queue?uri=${encodeURIComponent(trackUri)}`, 'POST');
-          if (queueRes.error) await sendSpotifyResponse(`❌ ${queueRes.error}`, channelId);
-          else await sendSpotifyResponse(`✅ Kuyruğa eklendi → 🎵 ${trackInfo.artists.map(a => a.name).join(', ')} - ${trackInfo.name}`, channelId);
-        } catch(e) { await sendSpotifyResponse('❌ Şarkı ekleme hatası.', channelId); }
+          if (trackInfo.error) { await sendSpotifyResponse('▶️ Şarkı çalınıyor.', channelId); break; }
+          await sendSpotifyResponse(`▶️ Çalınıyor → 🎵 ${trackInfo.artists.map(a => a.name).join(', ')} - ${trackInfo.name}`, channelId);
+        } catch(e) { await sendSpotifyResponse('❌ Şarkı çalma hatası.', channelId); }
         break;
       }
       
