@@ -203,13 +203,16 @@ async function getLatestEvent() {
 
   // Google Translate ile tüm metni çevir (event adı + bullet'lar)
   const fullText = `${eventName}\n${bullets.join('\n')}`;
-  const translated = await googleTranslate(fullText);
-  const lines = translated.split('\n').filter(l => l.trim());
-  
-  const eventNameTR = lines[0] || eventName;
-  const bulletsTR = lines.slice(1);
-
-  return { eventNameTR, bullets: bulletsTR.length > 0 ? bulletsTR : bullets };
+  try {
+    const translated = await googleTranslate(fullText);
+    const lines = translated.split('\n').filter(l => l.trim());
+    const eventNameTR = lines[0] || eventName;
+    const bulletsTR = lines.slice(1);
+    return { eventNameTR, bullets: bulletsTR.length > 0 ? bulletsTR : bullets };
+  } catch(e) {
+    // Çeviri başarısız olursa İngilizce göster
+    return { eventNameTR: eventName, bullets };
+  }
 }
 
 async function googleTranslate(text) {
