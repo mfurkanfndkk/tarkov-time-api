@@ -1302,9 +1302,85 @@ app.post('/webhook/kick', async (req, res) => {
         break;
       }
       
+      case '!görev': {
+        if (!args) { await sendKickMessage('❌ Kullanım: !görev <görev adı> — Örnek: !görev the punisher part 1', channelId); break; }
+        if (!checkCooldown(sender, 'görev', 5)) return;
+        try {
+          const MAP_NAMES = {
+            '55f2d3fd4bdc2d5f408b4567': 'Factory', '56f40101d2720b2a4d8b45d6': 'Customs',
+            '5704e3c2d2720bac5b8b4567': 'Woods', '5704e4dad2720bb55b8b4567': 'Lighthouse',
+            '5704e554d2720bac5b8b456e': 'Shoreline', '5704e5fad2720bc05b8b4567': 'Reserve',
+            '5714dbc024597771384a510d': 'Interchange', '5714dc692459777137212e12': 'Streets',
+            '59fc81d786f774390775787e': 'Night Factory', '5b0fc42d86f7744a585f9105': 'Labs',
+            '653e6760052c01c1c805532f': 'Ground Zero', '65b8d6f5cdde2479cb2a3125': 'Ground Zero 21+',
+            '65cc8f81a9aac3e77d0cfd3e': 'Terminal', '6733700029c367a3d40b02af': 'Labyrinth'
+          };
+          const TRADER_NAMES = {
+            '54cb57776803fa99248b456e': 'Prapor', '54cb50c76803fa8b248b4571': 'Therapist',
+            '58330581ace78e27b8b10cee': 'Skier', '5a7c2eca46aef81a7ca2145d': 'Mechanic',
+            '6617beeaa9cfa777ca915b7c': 'Ref', '5935c25fb3acc3127c3d8cd9': 'Peacekeeper',
+            '5c0647fdd443bc2504c2d371': 'Jaeger', '579dc571d53a0658a154fbec': 'Fence',
+            '5ac3b934156ae10c4430e83c': 'Ragman', '638f541a29ffd1183d187f57': 'Lightkeeper',
+            '656f0f98d80a697f855d34b1': 'BTR'
+          };
+          const taskRes = await fetch('https://json.tarkov.dev/regular/tasks', { headers: { 'User-Agent': 'TarkovBot/1.0' } });
+          const taskData = await taskRes.json();
+          const tasks = Object.values(taskData?.data?.tasks || {});
+          
+          // Arama: kullanıcının yazdığını normalizedName formatına çevir
+          const searchQuery = args.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim().replace(/\s+/g, '-');
+          let task = tasks.find(t => t.normalizedName === searchQuery);
+          // Bulunamazsa kısmi eşleşme dene
+          if (!task) task = tasks.find(t => t.normalizedName?.includes(searchQuery));
+          // Hala bulunamazsa kelime bazlı ara
+          if (!task) {
+            const words = args.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim().split(/\s+/);
+            task = tasks.find(t => words.every(w => t.normalizedName?.includes(w)));
+          }
+          
+          if (!task) { await sendKickMessage(`❌ "${args}" görev bulunamadı.`, channelId); break; }
+          
+          // Görev adını normalizedName'den oluştur
+          const taskName = task.normalizedName.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+          const trader = TRADER_NAMES[task.trader] || '?';
+          const mapName = MAP_NAMES[task.map] || null;
+          
+          // Objective'lerden Türkçe açıklama oluştur
+          const objTexts = [];
+          for (const obj of (task.objectives || [])) {
+            const maps = obj.maps?.map(m => MAP_NAMES[m] || m).filter(Boolean);
+            const mapStr = maps?.length ? ` (${maps.join(', ')})` : '';
+            switch (obj.type) {
+              case 'shoot': objTexts.push(`🔫 ${obj.count || '?'} düşman öldür${mapStr}`); break;
+              case 'findItem': objTexts.push(`🔍 ${obj.count || '?'} eşya bul${mapStr}`); break;
+              case 'giveItem': objTexts.push(`📦 ${obj.count || '?'} eşya teslim et`); break;
+              case 'visit': objTexts.push(`📍 Bölgeyi ziyaret et${mapStr}`); break;
+              case 'extract': objTexts.push(`🚪 Çıkış yap${mapStr}`); break;
+              case 'plantItem': objTexts.push(`🏗️ Eşya yerleştir${mapStr}`); break;
+              case 'mark': objTexts.push(`📌 İşaretle${mapStr}`); break;
+              case 'buildWeapon': objTexts.push(`🔧 Silah modifiye et`); break;
+              case 'traderLevel': objTexts.push(`📈 Trader seviye yükselt`); break;
+              case 'skill': objTexts.push(`💪 Yetenek seviyesine ulaş`); break;
+              default: if (obj.type) objTexts.push(`▪️ ${obj.type}${mapStr}`);
+            }
+          }
+          
+          // Benzersiz objective'ler
+          const uniqueObjs = [...new Set(objTexts)];
+          const header = `📋 ${taskName} | 🏪 ${trader}${mapName ? ` | 🗺️ ${mapName}` : ''}${task.minPlayerLevel ? ` | Lvl ${task.minPlayerLevel}+` : ''}`;
+          const objectives = uniqueObjs.join(' → ');
+          
+          await sendKickMessage(`${header} — ${objectives}`, channelId);
+        } catch (err) {
+          console.error('Görev hatası:', err.message);
+          await sendKickMessage('❌ Görev bilgisi alınamadı.', channelId);
+        }
+        break;
+      }
+      
       case '!komutlar': {
         if (!checkCooldown(sender, 'komutlar', 10)) return;
-        await sendKickMessage(`📋 Komutlar → !tarkovsaat | !goons | !etkinlik | !quiz | !c <cevap> | !skor | !bahane | !bot | !kd | !boss | !song | !skip | !pause | !play | !volume | !çal`, channelId);
+        await sendKickMessage(`📋 Komutlar → !tarkovsaat | !goons | !etkinlik | !quiz | !c <cevap> | !skor | !bahane | !bot | !kd | !boss | !görev | !song | !skip | !pause | !play | !volume | !çal`, channelId);
         break;
       }
 
