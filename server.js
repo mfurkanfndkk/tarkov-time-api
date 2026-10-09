@@ -1899,7 +1899,7 @@ app.get('/spotify', (req, res) => {
 
 // Spotify API endpoints
 app.get('/api/spotify/current', async (req, res) => {
-  const data = await spotifyApi('/currently-playing');
+  const data = await spotifyApi('');
   res.json(data);
 });
 
@@ -1927,6 +1927,13 @@ app.put('/api/spotify/volume', async (req, res) => {
   const vol = parseInt(req.query.vol);
   if (isNaN(vol) || vol < 0 || vol > 100) return res.json({ error: 'Geçersiz ses seviyesi' });
   const data = await spotifyApi(`/volume?volume_percent=${vol}`, 'PUT');
+  res.json(data);
+});
+
+app.put('/api/spotify/seek', async (req, res) => {
+  const pos = parseInt(req.query.pos);
+  if (isNaN(pos) || pos < 0) return res.json({ error: 'Geçersiz pozisyon' });
+  const data = await spotifyApi(`/seek?position_ms=${pos}`, 'PUT');
   res.json(data);
 });
 

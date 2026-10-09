@@ -8,23 +8,34 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: #121212; color: #fff; font-family: 'Segoe UI', sans-serif; min-height: 100vh; display: flex; justify-content: center; align-items: center; }
   .container { width: 420px; background: #181818; border-radius: 16px; padding: 32px; box-shadow: 0 8px 32px rgba(0,0,0,.5); }
-  .now-playing { display: flex; gap: 16px; align-items: center; margin-bottom: 24px; min-height: 80px; }
+  .now-playing { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; min-height: 80px; }
   .album-art { width: 80px; height: 80px; border-radius: 8px; background: #282828; object-fit: cover; flex-shrink: 0; }
   .album-art.empty { display: flex; align-items: center; justify-content: center; font-size: 32px; }
   .track-info { flex: 1; overflow: hidden; }
   .track-name { font-size: 18px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .track-artist { font-size: 14px; color: #b3b3b3; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .track-status { font-size: 12px; color: #1db954; margin-top: 6px; }
-  .controls { display: flex; justify-content: center; align-items: center; gap: 20px; margin-bottom: 24px; }
+  
+  .progress-section { margin-bottom: 20px; }
+  .progress-bar-container { width: 100%; height: 6px; background: #404040; border-radius: 3px; cursor: pointer; position: relative; }
+  .progress-bar { height: 100%; background: #1db954; border-radius: 3px; transition: width 0.3s linear; }
+  .progress-times { display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; color: #b3b3b3; }
+  
+  .controls { display: flex; justify-content: center; align-items: center; gap: 20px; margin-bottom: 20px; }
   .btn { width: 48px; height: 48px; border-radius: 50%; border: none; background: #282828; color: #fff; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .15s; }
   .btn:hover { background: #333; transform: scale(1.08); }
   .btn.play-pause { width: 56px; height: 56px; background: #1db954; font-size: 24px; }
   .btn.play-pause:hover { background: #1ed760; }
+  
   .volume-row { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
-  .volume-row span { font-size: 18px; }
+  .volume-row span { font-size: 18px; cursor: pointer; }
   .volume-slider { flex: 1; -webkit-appearance: none; height: 6px; border-radius: 3px; background: #404040; outline: none; }
   .volume-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #1db954; cursor: pointer; }
   .vol-label { font-size: 13px; color: #b3b3b3; min-width: 36px; text-align: right; }
+  
+  .device-info { font-size: 12px; color: #666; text-align: center; margin-bottom: 16px; }
+  .device-info .device-name { color: #1db954; }
+  
   .search-section { margin-bottom: 16px; }
   .search-row { display: flex; gap: 8px; }
   .search-input { flex: 1; padding: 10px 14px; border-radius: 24px; border: none; background: #282828; color: #fff; font-size: 14px; outline: none; }
@@ -40,7 +51,6 @@
   .result-artist { font-size: 12px; color: #b3b3b3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .result-play { font-size: 18px; color: #1db954; padding: 4px; }
   .divider { border: none; border-top: 1px solid #282828; margin: 16px 0; }
-  .queue-title { font-size: 14px; color: #b3b3b3; margin-bottom: 8px; }
   .status-msg { text-align: center; color: #b3b3b3; font-size: 13px; padding: 8px; }
   .error { color: #e74c3c; }
   ::-webkit-scrollbar { width: 6px; }
@@ -59,6 +69,16 @@
     </div>
   </div>
 
+  <div class="progress-section">
+    <div class="progress-bar-container" id="progressContainer" onclick="seekTo(event)">
+      <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+    </div>
+    <div class="progress-times">
+      <span id="currentTime">0:00</span>
+      <span id="totalTime">0:00</span>
+    </div>
+  </div>
+
   <div class="controls">
     <button class="btn" onclick="prevTrack()" title="Önceki">⏮</button>
     <button class="btn play-pause" id="playPauseBtn" onclick="togglePlayPause()" title="Çal/Duraklat">▶</button>
@@ -66,10 +86,12 @@
   </div>
 
   <div class="volume-row">
-    <span>🔊</span>
+    <span id="volIcon" onclick="toggleMute()">🔊</span>
     <input type="range" class="volume-slider" id="volumeSlider" min="0" max="100" value="50" oninput="updateVolLabel(this.value)" onchange="setVolume(this.value)">
     <span class="vol-label" id="volLabel">50%</span>
   </div>
+
+  <div id="deviceInfo" class="device-info"></div>
 
   <hr class="divider">
 
@@ -87,13 +109,34 @@
 <script>
 const BASE = '';
 let isPlaying = false;
-let pollTimer = null;
+let progressMs = 0;
+let durationMs = 0;
+let lastUpdate = Date.now();
+let lastVolume = 50;
+let volumeDragging = false;
 
 async function api(endpoint, method = 'GET', body = null) {
   const opts = { method, headers: {} };
   if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
   const res = await fetch(BASE + '/api/spotify' + endpoint, opts);
   return res.json();
+}
+
+function formatTime(ms) {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${sec.toString().padStart(2, '0')}`;
+}
+
+function updateProgress() {
+  if (isPlaying && durationMs > 0) {
+    const elapsed = Date.now() - lastUpdate;
+    const current = Math.min(progressMs + elapsed, durationMs);
+    const pct = (current / durationMs) * 100;
+    document.getElementById('progressBar').style.width = pct + '%';
+    document.getElementById('currentTime').textContent = formatTime(current);
+  }
 }
 
 async function refreshNowPlaying() {
@@ -106,6 +149,7 @@ async function refreshNowPlaying() {
       document.getElementById('albumArt').innerHTML = '🎵';
       document.getElementById('albumArt').classList.add('empty');
       document.getElementById('playPauseBtn').textContent = '▶';
+      document.getElementById('deviceInfo').textContent = '';
       isPlaying = false;
       return;
     }
@@ -115,6 +159,7 @@ async function refreshNowPlaying() {
       document.getElementById('trackStatus').textContent = '';
       document.getElementById('albumArt').innerHTML = '🎵';
       document.getElementById('albumArt').classList.add('empty');
+      document.getElementById('deviceInfo').textContent = '';
       return;
     }
     const track = data.item;
@@ -124,14 +169,45 @@ async function refreshNowPlaying() {
     document.getElementById('playPauseBtn').textContent = isPlaying ? '⏸' : '▶';
     document.getElementById('trackStatus').textContent = isPlaying ? '● Çalıyor' : '○ Duraklatıldı';
     document.getElementById('trackStatus').style.color = isPlaying ? '#1db954' : '#b3b3b3';
+
+    // Album art
     const art = track.album?.images?.[0]?.url;
     if (art) {
       document.getElementById('albumArt').innerHTML = `<img src="${art}" class="album-art" alt="">`;
       document.getElementById('albumArt').classList.remove('empty');
     }
+
+    // Progress
+    progressMs = data.progress_ms || 0;
+    durationMs = track.duration_ms || 0;
+    lastUpdate = Date.now();
+    document.getElementById('currentTime').textContent = formatTime(progressMs);
+    document.getElementById('totalTime').textContent = formatTime(durationMs);
+    if (durationMs > 0) {
+      document.getElementById('progressBar').style.width = ((progressMs / durationMs) * 100) + '%';
+    }
+
+    // Volume
+    if (!volumeDragging && data.device) {
+      const vol = data.device.volume_percent;
+      document.getElementById('volumeSlider').value = vol;
+      document.getElementById('volLabel').textContent = vol + '%';
+      updateVolIcon(vol);
+      lastVolume = vol > 0 ? vol : lastVolume;
+    }
+
+    // Device info
+    if (data.device) {
+      document.getElementById('deviceInfo').innerHTML = `📱 <span class="device-name">${esc(data.device.name)}</span> — ${data.device.type}`;
+    }
   } catch(e) {
     console.error(e);
   }
+}
+
+function updateVolIcon(vol) {
+  const icon = vol === 0 ? '🔇' : vol < 30 ? '🔈' : vol < 70 ? '🔉' : '🔊';
+  document.getElementById('volIcon').textContent = icon;
 }
 
 async function togglePlayPause() {
@@ -146,32 +222,59 @@ async function togglePlayPause() {
 async function nextTrack() {
   const data = await api('/next', 'POST');
   if (data.error) return showStatus(data.error, true);
-  showStatus('⏭ Sonraki şarkıya geçildi');
   setTimeout(refreshNowPlaying, 1000);
 }
 
 async function prevTrack() {
   const data = await api('/previous', 'POST');
   if (data.error) return showStatus(data.error, true);
-  showStatus('⏮ Önceki şarkıya dönüldü');
   setTimeout(refreshNowPlaying, 1000);
 }
 
-function updateVolLabel(val) { document.getElementById('volLabel').textContent = val + '%'; }
+function updateVolLabel(val) {
+  document.getElementById('volLabel').textContent = val + '%';
+  updateVolIcon(parseInt(val));
+}
+
+document.getElementById('volumeSlider').addEventListener('mousedown', () => { volumeDragging = true; });
+document.getElementById('volumeSlider').addEventListener('mouseup', () => { volumeDragging = false; });
+document.getElementById('volumeSlider').addEventListener('touchstart', () => { volumeDragging = true; });
+document.getElementById('volumeSlider').addEventListener('touchend', () => { volumeDragging = false; });
 
 async function setVolume(val) {
+  volumeDragging = false;
+  lastVolume = parseInt(val) > 0 ? parseInt(val) : lastVolume;
   const data = await api('/volume?vol=' + val, 'PUT');
   if (data.error) showStatus(data.error, true);
+}
+
+async function toggleMute() {
+  const slider = document.getElementById('volumeSlider');
+  const currentVol = parseInt(slider.value);
+  const newVol = currentVol > 0 ? 0 : lastVolume;
+  slider.value = newVol;
+  updateVolLabel(newVol);
+  await setVolume(newVol);
+}
+
+async function seekTo(event) {
+  if (durationMs <= 0) return;
+  const rect = event.target.closest('.progress-bar-container').getBoundingClientRect();
+  const pct = (event.clientX - rect.left) / rect.width;
+  const posMs = Math.round(pct * durationMs);
+  const data = await api('/seek?pos=' + posMs, 'PUT');
+  if (data.error) return showStatus(data.error, true);
+  progressMs = posMs;
+  lastUpdate = Date.now();
+  document.getElementById('progressBar').style.width = (pct * 100) + '%';
+  document.getElementById('currentTime').textContent = formatTime(posMs);
 }
 
 async function searchOrPlay() {
   const input = document.getElementById('searchInput').value.trim();
   if (!input) return;
-
-  // Spotify link check
   const trackMatch = input.match(/open\.spotify\.com\/(?:intl-[a-z]{2}\/)?track\/([a-zA-Z0-9]+)/);
   const playlistMatch = input.match(/open\.spotify\.com\/(?:intl-[a-z]{2}\/)?playlist\/([a-zA-Z0-9]+)/);
-
   if (trackMatch) {
     const data = await api('/play-track', 'POST', { trackId: trackMatch[1] });
     if (data.error) return showStatus(data.error, true);
@@ -181,7 +284,6 @@ async function searchOrPlay() {
     setTimeout(refreshNowPlaying, 1000);
     return;
   }
-
   if (playlistMatch) {
     const data = await api('/play-playlist', 'POST', { playlistId: playlistMatch[1] });
     if (data.error) return showStatus(data.error, true);
@@ -191,15 +293,11 @@ async function searchOrPlay() {
     setTimeout(refreshNowPlaying, 1000);
     return;
   }
-
-  // Search
   const data = await api('/search?q=' + encodeURIComponent(input));
   if (data.error) return showStatus(data.error, true);
   const tracks = data.tracks?.items || [];
   if (tracks.length === 0) return showStatus('Sonuç bulunamadı', true);
-
-  const resultsDiv = document.getElementById('results');
-  resultsDiv.innerHTML = tracks.map(t => `
+  document.getElementById('results').innerHTML = tracks.map(t => `
     <div class="result-item" onclick="playTrack('${t.id}')">
       <img src="${t.album?.images?.[2]?.url || t.album?.images?.[0]?.url || ''}" class="result-art" alt="">
       <div class="result-info">
@@ -229,9 +327,9 @@ function showStatus(msg, isError = false) {
   setTimeout(() => { el.textContent = ''; }, 3000);
 }
 
-// Poll every 3 seconds
 refreshNowPlaying();
-pollTimer = setInterval(refreshNowPlaying, 3000);
+setInterval(refreshNowPlaying, 3000);
+setInterval(updateProgress, 500);
 </script>
 </body>
 </html>
