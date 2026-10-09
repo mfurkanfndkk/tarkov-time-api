@@ -1471,16 +1471,21 @@ app.post('/webhook/kick', async (req, res) => {
           const trackMatch = args.match(/open\.spotify\.com\/(?:intl-[a-z]{2}\/)?track\/([a-zA-Z0-9]+)/);
           if (!trackMatch) { await sendSpotifyResponse('❌ Geçerli bir Spotify linki gir (şarkı veya playlist).', channelId); break; }
           const trackId = trackMatch[1];
-          const trackUri = `spotify:track:${trackId}`;
-          // Direkt çal
-          const playRes = await spotifyApi('/play', 'PUT', { uris: [trackUri] });
-          if (playRes.error) { await sendSpotifyResponse(`❌ ${playRes.error}`, channelId); break; }
           // Şarkı bilgisini al
           const infoRes = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           const trackInfo = await infoRes.json();
           if (trackInfo.error) { await sendSpotifyResponse('▶️ Şarkı çalınıyor.', channelId); break; }
+          // Albüm context'i ile çal (bittikten sonra devam eder)
+          const albumUri = trackInfo.album?.uri;
+          let playRes;
+          if (albumUri) {
+            playRes = await spotifyApi('/play', 'PUT', { context_uri: albumUri, offset: { uri: `spotify:track:${trackId}` } });
+          } else {
+            playRes = await spotifyApi('/play', 'PUT', { uris: [`spotify:track:${trackId}`] });
+          }
+          if (playRes.error) { await sendSpotifyResponse(`❌ ${playRes.error}`, channelId); break; }
           await sendSpotifyResponse(`▶️ Çalınıyor → 🎵 ${trackInfo.artists.map(a => a.name).join(', ')} - ${trackInfo.name}`, channelId);
         } catch(e) { await sendSpotifyResponse('❌ Şarkı çalma hatası.', channelId); }
         break;
@@ -1954,8 +1959,24 @@ app.get('/api/spotify/search', async (req, res) => {
 app.post('/api/spotify/play-track', async (req, res) => {
   const { trackId } = req.body || {};
   if (!trackId) return res.json({ error: 'Track ID gerekli' });
-  const data = await spotifyApi('/play', 'PUT', { uris: [`spotify:track:${trackId}`] });
-  res.json(data);
+  try {
+    // Şarkının albüm bilgisini al
+    const token = await getSpotifyToken();
+    if (!token) return res.json({ error: 'Spotify bağlı değil' });
+    const infoRes = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const trackInfo = await infoRes.json();
+    const albumUri = trackInfo?.album?.uri;
+    // Albüm context'i varsa albümden başlat (bittikten sonra devam eder)
+    if (albumUri) {
+      const data = await spotifyApi('/play', 'PUT', { context_uri: albumUri, offset: { uri: `spotify:track:${trackId}` } });
+      return res.json(data);
+    }
+    // Fallback: tek şarkı çal
+    const data = await spotifyApi('/play', 'PUT', { uris: [`spotify:track:${trackId}`] });
+    res.json(data);
+  } catch(e) { res.json({ error: e.message }); }
 });
 
 app.post('/api/spotify/play-playlist', async (req, res) => {
