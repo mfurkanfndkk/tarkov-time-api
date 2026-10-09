@@ -1887,6 +1887,77 @@ app.get('/panel/:slug', async (req, res) => {
   res.send(html);
 });
 
+// ========== SPOTIFY PANEL ==========
+
+// Spotify panel sayfası
+app.get('/spotify', (req, res) => {
+  const fs = require('fs');
+  const path = require('path');
+  let html = fs.readFileSync(path.join(__dirname, 'spotify-panel.html'), 'utf8');
+  res.send(html);
+});
+
+// Spotify API endpoints
+app.get('/api/spotify/current', async (req, res) => {
+  const data = await spotifyApi('/currently-playing');
+  res.json(data);
+});
+
+app.put('/api/spotify/play', async (req, res) => {
+  const data = await spotifyApi('/play', 'PUT');
+  res.json(data);
+});
+
+app.put('/api/spotify/pause', async (req, res) => {
+  const data = await spotifyApi('/pause', 'PUT');
+  res.json(data);
+});
+
+app.post('/api/spotify/next', async (req, res) => {
+  const data = await spotifyApi('/next', 'POST');
+  res.json(data);
+});
+
+app.post('/api/spotify/previous', async (req, res) => {
+  const data = await spotifyApi('/previous', 'POST');
+  res.json(data);
+});
+
+app.put('/api/spotify/volume', async (req, res) => {
+  const vol = parseInt(req.query.vol);
+  if (isNaN(vol) || vol < 0 || vol > 100) return res.json({ error: 'Geçersiz ses seviyesi' });
+  const data = await spotifyApi(`/volume?volume_percent=${vol}`, 'PUT');
+  res.json(data);
+});
+
+app.get('/api/spotify/search', async (req, res) => {
+  const q = req.query.q;
+  if (!q) return res.json({ error: 'Arama terimi gerekli' });
+  const token = await getSpotifyToken();
+  if (!token) return res.json({ error: 'Spotify bağlı değil' });
+  try {
+    const r = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=5`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await r.json();
+    res.json(data);
+  } catch(e) { res.json({ error: e.message }); }
+});
+
+app.post('/api/spotify/play-track', async (req, res) => {
+  const { trackId } = req.body || {};
+  if (!trackId) return res.json({ error: 'Track ID gerekli' });
+  const data = await spotifyApi('/play', 'PUT', { uris: [`spotify:track:${trackId}`] });
+  res.json(data);
+});
+
+app.post('/api/spotify/play-playlist', async (req, res) => {
+  const { playlistId } = req.body || {};
+  if (!playlistId) return res.json({ error: 'Playlist ID gerekli' });
+  const data = await spotifyApi('/play', 'PUT', { context_uri: `spotify:playlist:${playlistId}` });
+  res.json(data);
+});
+
 // Health check
 app.get('/api/healthz', (req, res) => {
   res.json({ status: 'ok' });
