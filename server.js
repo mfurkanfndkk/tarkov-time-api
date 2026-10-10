@@ -1357,10 +1357,17 @@ app.post('/webhook/kick', async (req, res) => {
               case 'visit': objTexts.push(`📍 Bölgeyi ziyaret et${mapStr}`); break;
               case 'extract': objTexts.push(`🚪 Çıkış yap${mapStr}`); break;
               case 'plantItem': objTexts.push(`🏗️ Eşya yerleştir${mapStr}`); break;
+              case 'useItem': objTexts.push(`💊 Eşya kullan${mapStr}`); break;
               case 'mark': objTexts.push(`📌 İşaretle${mapStr}`); break;
               case 'buildWeapon': objTexts.push(`🔧 Silah modifiye et`); break;
               case 'traderLevel': objTexts.push(`📈 Trader seviye yükselt`); break;
+              case 'traderStanding': objTexts.push(`📈 Trader itibar kazan`); break;
               case 'skill': objTexts.push(`💪 Yetenek seviyesine ulaş`); break;
+              case 'experience': objTexts.push(`⭐ Tecrübe puanı kazan`); break;
+              case 'playerLevel': objTexts.push(`🎖️ Seviyeye ulaş`); break;
+              case 'taskStatus': objTexts.push(`📝 Görevi tamamla`); break;
+              case 'findQuestItem': objTexts.push(`🔎 Görev eşyası bul${mapStr}`); break;
+              case 'giveQuestItem': objTexts.push(`📬 Görev eşyası teslim et`); break;
               default: if (obj.type) objTexts.push(`▪️ ${obj.type}${mapStr}`);
             }
           }
