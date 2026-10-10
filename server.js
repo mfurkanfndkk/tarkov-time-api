@@ -1323,41 +1323,105 @@ app.post('/webhook/kick', async (req, res) => {
             '5ac3b934156ae10c4430e83c': 'Ragman', '638f541a29ffd1183d187f57': 'Lightkeeper',
             '656f0f98d80a697f855d34b1': 'BTR'
           };
-          const taskRes = await fetch('https://json.tarkov.dev/regular/tasks', { headers: { 'User-Agent': 'TarkovBot/1.0' } });
+          const TARGET_TR = {
+            'Any': 'herhangi düşman', 'AnyPmc': 'PMC', 'Bear': 'BEAR', 'Usec': 'USEC',
+            'Savage': 'Scav', 'assaultGroup': 'Scav', 'Marksman': 'Sniper Scav',
+            'PmcBot': 'Raider', 'ExUsec': 'Rogue', 'exUsecFree': 'Rogue',
+            'bossBully': 'Reshala', 'bossKilla': 'Killa', 'bossGluhar': 'Glukhar',
+            'bossSanitar': 'Sanitar', 'bossTagilla': 'Tagilla', 'bossKojaniy': 'Shturman',
+            'bossKnight': 'Knight', 'bossBoar': 'Kaban', 'bossKolontay': 'Kolontay',
+            'bossZryachiy': 'Zryachiy', 'sectantPriest': 'Cultist Priest',
+            'sectantWarrior': 'Cultist', 'followerBigPipe': 'Big Pipe',
+            'followerBirdEye': 'Birdeye', 'blackDivision': 'Black Division',
+            'bossPartisan': 'Partisan', 'bossWedge': 'Wedge'
+          };
+
+          // Task ve item verilerini paralel çek
+          const [taskRes, itemsRes] = await Promise.all([
+            fetch('https://json.tarkov.dev/regular/tasks', { headers: { 'User-Agent': 'TarkovBot/1.0' } }),
+            fetch('https://json.tarkov.dev/regular/items', { headers: { 'User-Agent': 'TarkovBot/1.0' } })
+          ]);
           const taskData = await taskRes.json();
+          const itemsData = await itemsRes.json();
           const tasks = Object.values(taskData?.data?.tasks || {});
-          
-          // Arama: kullanıcının yazdığını normalizedName formatına çevir
+          const items = itemsData?.data?.items || {};
+
+          // Item ID → okunabilir isim
+          function itemName(id) {
+            const item = items[id];
+            if (!item) return id;
+            const nn = item.normalizedName || '';
+            return nn.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+          }
+
+          // Arama
           const searchQuery = args.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim().replace(/\s+/g, '-');
           let task = tasks.find(t => t.normalizedName === searchQuery);
-          // Bulunamazsa kısmi eşleşme dene
           if (!task) task = tasks.find(t => t.normalizedName?.includes(searchQuery));
-          // Hala bulunamazsa kelime bazlı ara
           if (!task) {
             const words = args.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim().split(/\s+/);
             task = tasks.find(t => words.every(w => t.normalizedName?.includes(w)));
           }
-          
           if (!task) { await sendKickMessage(`❌ "${args}" görev bulunamadı.`, channelId); break; }
-          
-          // Görev adını normalizedName'den oluştur
+
           const taskName = task.normalizedName.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
           const trader = TRADER_NAMES[task.trader] || '?';
           const mapName = MAP_NAMES[task.map] || null;
-          
-          // Objective'lerden Türkçe açıklama oluştur
+
+          // Objective'lerden detaylı Türkçe açıklama
           const objTexts = [];
+          const seenItems = new Set(); // giveItem tekrarını önle
           for (const obj of (task.objectives || [])) {
-            const maps = obj.maps?.map(m => MAP_NAMES[m] || m).filter(Boolean);
-            const mapStr = maps?.length ? ` (${maps.join(', ')})` : '';
+            const maps = obj.maps?.map(m => MAP_NAMES[m]).filter(Boolean);
+            const mapStr = maps?.length ? ` [${maps.join(', ')}]` : '';
+
             switch (obj.type) {
-              case 'shoot': objTexts.push(`🔫 ${obj.count || '?'} düşman öldür${mapStr}`); break;
-              case 'findItem': objTexts.push(`🔍 ${obj.count || '?'} eşya bul${mapStr}`); break;
-              case 'giveItem': objTexts.push(`📦 ${obj.count || '?'} eşya teslim et`); break;
+              case 'shoot': {
+                const targets = (obj.targetNames || []).map(t => TARGET_TR[t] || t);
+                const uniqueTargets = [...new Set(targets)];
+                const targetStr = uniqueTargets.length ? uniqueTargets.join('/') : 'düşman';
+                let detail = `🔫 ${obj.count} ${targetStr} öldür${mapStr}`;
+                if (obj.bodyParts?.length) detail += ` (${obj.bodyParts.join(', ')})`;
+                if (obj.usingWeapon?.length) {
+                  const weapons = obj.usingWeapon.slice(0, 2).map(id => itemName(id));
+                  detail += ` | Silah: ${weapons.join(', ')}${obj.usingWeapon.length > 2 ? '...' : ''}`;
+                }
+                if (obj.distance?.value > 0) detail += ` | ${obj.distance.value}m+`;
+                objTexts.push(detail);
+                break;
+              }
+              case 'findItem': {
+                const names = (obj.items || []).map(id => itemName(id));
+                const key = 'find:' + names.join(',');
+                if (!seenItems.has(key)) {
+                  seenItems.add(key);
+                  objTexts.push(`🔍 ${obj.count}x ${names.join(', ')} bul${obj.foundInRaid ? ' (FIR)' : ''}${mapStr}`);
+                }
+                break;
+              }
+              case 'giveItem': {
+                const names = (obj.items || []).map(id => itemName(id));
+                const key = 'give:' + names.join(',');
+                if (!seenItems.has(key)) {
+                  seenItems.add(key);
+                  objTexts.push(`📦 ${obj.count}x ${names.join(', ')} teslim et`);
+                }
+                break;
+              }
+              case 'useItem': {
+                const useItems = (obj.useAny || obj.items || []).map(id => itemName(id));
+                objTexts.push(`💊 ${useItems.join(' / ')} kullan${mapStr}`);
+                break;
+              }
+              case 'plantItem': {
+                const plantItems = (obj.items || []).map(id => itemName(id));
+                objTexts.push(`🏗️ ${plantItems.length ? plantItems.join(', ') + ' ' : ''}yerleştir${mapStr}`);
+                break;
+              }
+              case 'findQuestItem': objTexts.push(`🔎 Görev eşyası bul${mapStr}`); break;
+              case 'giveQuestItem': objTexts.push(`📬 Görev eşyası teslim et`); break;
               case 'visit': objTexts.push(`📍 Bölgeyi ziyaret et${mapStr}`); break;
               case 'extract': objTexts.push(`🚪 Çıkış yap${mapStr}`); break;
-              case 'plantItem': objTexts.push(`🏗️ Eşya yerleştir${mapStr}`); break;
-              case 'useItem': objTexts.push(`💊 Eşya kullan${mapStr}`); break;
               case 'mark': objTexts.push(`📌 İşaretle${mapStr}`); break;
               case 'buildWeapon': objTexts.push(`🔧 Silah modifiye et`); break;
               case 'traderLevel': objTexts.push(`📈 Trader seviye yükselt`); break;
@@ -1365,19 +1429,23 @@ app.post('/webhook/kick', async (req, res) => {
               case 'skill': objTexts.push(`💪 Yetenek seviyesine ulaş`); break;
               case 'experience': objTexts.push(`⭐ Tecrübe puanı kazan`); break;
               case 'playerLevel': objTexts.push(`🎖️ Seviyeye ulaş`); break;
-              case 'taskStatus': objTexts.push(`📝 Görevi tamamla`); break;
-              case 'findQuestItem': objTexts.push(`🔎 Görev eşyası bul${mapStr}`); break;
-              case 'giveQuestItem': objTexts.push(`📬 Görev eşyası teslim et`); break;
+              case 'taskStatus': objTexts.push(`📝 Ön görevi tamamla`); break;
               default: if (obj.type) objTexts.push(`▪️ ${obj.type}${mapStr}`);
             }
           }
-          
-          // Benzersiz objective'ler
+
           const uniqueObjs = [...new Set(objTexts)];
           const header = `📋 ${taskName} | 🏪 ${trader}${mapName ? ` | 🗺️ ${mapName}` : ''}${task.minPlayerLevel ? ` | Lvl ${task.minPlayerLevel}+` : ''}`;
           const objectives = uniqueObjs.join(' → ');
+          const msg = `${header} — ${objectives}`;
           
-          await sendKickMessage(`${header} — ${objectives}`, channelId);
+          // Mesaj çok uzunsa böl
+          if (msg.length > 480) {
+            await sendKickMessage(header, channelId);
+            await sendKickMessage(objectives, channelId);
+          } else {
+            await sendKickMessage(msg, channelId);
+          }
         } catch (err) {
           console.error('Görev hatası:', err.message);
           await sendKickMessage('❌ Görev bilgisi alınamadı.', channelId);
