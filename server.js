@@ -1372,8 +1372,8 @@ app.post('/webhook/kick', async (req, res) => {
           const objTexts = [];
           const seenItems = new Set(); // giveItem tekrarını önle
           for (const obj of (task.objectives || [])) {
-            const maps = obj.maps?.map(m => MAP_NAMES[m]).filter(Boolean);
-            const mapStr = maps?.length ? ` [${maps.join(', ')}]` : '';
+            const maps = [...new Set((obj.maps || []).map(m => MAP_NAMES[m]).filter(Boolean))];
+            const mapStr = maps.length ? ` [${maps.join(', ')}]` : '';
 
             switch (obj.type) {
               case 'shoot': {
@@ -1418,6 +1418,7 @@ app.post('/webhook/kick', async (req, res) => {
                 objTexts.push(`🏗️ ${plantItems.length ? plantItems.join(', ') + ' ' : ''}yerleştir${mapStr}`);
                 break;
               }
+              case 'plantQuestItem': objTexts.push(`🏗️ Görev eşyası yerleştir${mapStr}`); break;
               case 'findQuestItem': objTexts.push(`🔎 Görev eşyası bul${mapStr}`); break;
               case 'giveQuestItem': objTexts.push(`📬 Görev eşyası teslim et`); break;
               case 'visit': objTexts.push(`📍 Bölgeyi ziyaret et${mapStr}`); break;
